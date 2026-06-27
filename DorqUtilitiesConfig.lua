@@ -33,6 +33,7 @@ local masterProfile = {
 	events = {},
 
 	settings = {
+		ebonMightTracker = true,
 		soundChannelCap = true,
 		warcraftLogsContextMenu = true,
 	},
@@ -122,6 +123,12 @@ local featureGroups = {
 				tooltip = "Shows a static warning near the top of the screen when your active equipment set or talent loadout does not match available presets containing mp or raid.",
 				displayNote = "Static top-screen alert.",
 				alerts = { "LOADOUT_MISMATCH" },
+			},
+			{
+				label = "Ebon Might tracker",
+				tooltip = "Shows a cursor reminder for Augmentation Evokers when Ebon Might is missing in combat or inside its 4 second refresh window.",
+				displayNote = "Cursor-following icon reminder.",
+				settings = { "ebonMightTracker" },
 			},
 			{
 				label = "Warcraft Logs context menu",

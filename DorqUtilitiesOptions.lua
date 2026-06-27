@@ -59,6 +59,9 @@ local function CreateFeatureRow(parent, feature, xOffset, yOffset, rowWidth)
 		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
 			DorqUtilities.Core.RefreshSoundChannelCap()
 		end
+		if DorqUtilities.Core and DorqUtilities.Core.RefreshEbonMightTracker then
+			DorqUtilities.Core.RefreshEbonMightTracker()
+		end
 		RefreshCheckButtons()
 	end)
 
@@ -124,6 +127,9 @@ local function BuildSettingsPanel(panel)
 		end
 		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
 			DorqUtilities.Core.RefreshSoundChannelCap()
+		end
+		if DorqUtilities.Core and DorqUtilities.Core.RefreshEbonMightTracker then
+			DorqUtilities.Core.RefreshEbonMightTracker()
 		end
 		RefreshCheckButtons()
 		Print("DorqUtilities major feature toggles were reset to their defaults.")

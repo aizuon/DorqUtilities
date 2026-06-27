@@ -38,6 +38,7 @@ local IsPlayerSpell = IsPlayerSpell
 local issecretvalue = issecretvalue
 local SetCVar = SetCVar
 local UnitClass = UnitClass
+local UnitAffectingCombat = UnitAffectingCombat
 local UnitGroupRolesAssigned = UnitGroupRolesAssigned
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
@@ -64,6 +65,19 @@ local LOADOUT_REFRESH_DELAYS = { 0.1, 0.35, 0.8, 1.5 }
 local SOUND_NUM_CHANNELS_CVAR = "Sound_NumChannels"
 local SOUND_NUM_CHANNELS_TARGET = 96
 local SOUND_CHANNEL_REPAIR_DELAYS = { 0.05, 0.25, 0.75, 1.25, 2.5 }
+local AUGMENTATION_SPEC_ID = 1473
+local EBON_MIGHT_AURA_IDS = {
+	[395152] = true,
+	[395296] = true,
+}
+-- Ebon Might's pandemic window is 3s; warn at 4s to account for its cast time.
+local EBON_MIGHT_PANDEMIC_THRESHOLD = 4
+local EBON_MIGHT_CURSOR_SCALE = 0.9
+local EBON_MIGHT_CURSOR_OFFSET_X = 20
+local EBON_MIGHT_CURSOR_OFFSET_Y = -20
+local EBON_MIGHT_CURSOR_TEXT_SIZE = 18
+local EBON_MIGHT_COMBAT_ENTRY_DELAY = 0.1
+local EXTERNAL_EBON_CURSOR_CONFIG = "Lifebloom" .. "AlertDB"
 local GCD_THRESHOLD = 1.5
 local MAX_AURA_SCAN_COUNT = 80
 
@@ -117,6 +131,9 @@ for _, spellID in ipairs(bloodlustLockoutDebuffs) do
 	bloodlustLockoutDebuffIDs[spellID] = true
 end
 
+local ebonMightSpellName = C_Spell and C_Spell.GetSpellName and (C_Spell.GetSpellName(395296) or C_Spell.GetSpellName(395152)) or "Ebon Might"
+local ebonMightSpellTexture = C_Spell and C_Spell.GetSpellTexture and (C_Spell.GetSpellTexture(395296) or C_Spell.GetSpellTexture(395152))
+
 local BLOODLUST_LOCKOUT_SCAN_FILTERS = {
 	"HARMFUL",
 	"HARMFUL|IMPORTANT",
@@ -144,6 +161,13 @@ local loadoutMismatchAlertFrame
 local loadoutMismatchAlertShown
 local loadoutRefreshSequence = 0
 local soundChannelRepairSequence = 0
+local ebonMightCursorFrame
+local ebonMightCursorShown = false
+local ebonMightRefreshSequence = 0
+local ebonMightMinExpirationTime
+local ebonMightAuraInstanceIDs = {}
+local ebonMightAuraFallbackUnits = {}
+local ebonMightPlayerInCombat = false
 local potionCooldownCheckReadyAt
 local currentBloodlustSpellID
 local hasBloodlustLockoutDebuff = false
@@ -254,6 +278,117 @@ local function SetPotionAlertShown(shouldShow)
 		frame:Show()
 	else
 		frame:Hide()
+	end
+end
+
+local function EnsureEbonMightCursorFrame()
+	if ebonMightCursorFrame then
+		return ebonMightCursorFrame
+	end
+
+	local frame = CreateFrame("Frame", "DorqUtilitiesEbonMightCursorFrame", UIParent)
+	frame:SetFrameStrata("TOOLTIP")
+	frame:SetSize(40, 40)
+	frame:SetClampedToScreen(false)
+	frame:Hide()
+
+	local icon = frame:CreateTexture(nil, "BACKGROUND")
+	icon:SetAllPoints(frame)
+	icon:SetTexture(ebonMightSpellTexture)
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	frame.icon = icon
+
+	local timer = frame:CreateFontString(nil, "OVERLAY")
+	timer:SetPoint("CENTER", frame, "CENTER", 0, 0)
+	timer:SetJustifyH("CENTER")
+	timer:SetFont("Fonts\\FRIZQT__.TTF", EBON_MIGHT_CURSOR_TEXT_SIZE, "OUTLINE")
+	timer:SetTextColor(1, 1, 1, 1)
+	timer:SetText("")
+	frame.timer = timer
+
+	ebonMightCursorFrame = frame
+	return frame
+end
+
+local function GetEbonMightCursorSettings()
+	local externalDB = type(_G[EXTERNAL_EBON_CURSOR_CONFIG]) == "table" and _G[EXTERNAL_EBON_CURSOR_CONFIG] or nil
+	return {
+		scale = externalDB and externalDB.cursorScale or EBON_MIGHT_CURSOR_SCALE,
+		offsetX = externalDB and externalDB.cursorOffsetX or EBON_MIGHT_CURSOR_OFFSET_X,
+		offsetY = externalDB and externalDB.cursorOffsetY or EBON_MIGHT_CURSOR_OFFSET_Y,
+		textSize = externalDB and externalDB.cursorTextSize or EBON_MIGHT_CURSOR_TEXT_SIZE,
+		textR = externalDB and externalDB.cursorTextR or 1,
+		textG = externalDB and externalDB.cursorTextG or 1,
+		textB = externalDB and externalDB.cursorTextB or 1,
+	}
+end
+
+local function ApplyEbonMightCursorSettings(frame)
+	local settings = GetEbonMightCursorSettings()
+	local scale = settings.scale or EBON_MIGHT_CURSOR_SCALE
+	frame:SetSize(40 * scale, 40 * scale)
+	frame.timer:SetFont("Fonts\\FRIZQT__.TTF", settings.textSize or EBON_MIGHT_CURSOR_TEXT_SIZE, "OUTLINE")
+	frame.timer:SetTextColor(settings.textR or 1, settings.textG or 1, settings.textB or 1, 1)
+	return settings.offsetX or EBON_MIGHT_CURSOR_OFFSET_X, settings.offsetY or EBON_MIGHT_CURSOR_OFFSET_Y
+end
+
+local function UpdateEbonMightCursorTimer(frame)
+	if ebonMightMinExpirationTime then
+		local remaining = ebonMightMinExpirationTime - GetTime()
+		if remaining > 0 then
+			frame.timer:SetText(string_format("%.1f", remaining))
+			return
+		end
+
+		ebonMightMinExpirationTime = nil
+	end
+
+	frame.timer:SetText("")
+end
+
+local function UpdateEbonMightCursorPosition(frame, offsetX, offsetY)
+	local x, y = GetCursorPosition()
+	local uiScale = UIParent:GetEffectiveScale()
+	frame:SetPoint(
+		"TOPLEFT",
+		UIParent,
+		"BOTTOMLEFT",
+		x / uiScale + offsetX,
+		y / uiScale + offsetY
+	)
+	UpdateEbonMightCursorTimer(frame)
+end
+
+local function EbonMightCursorOnUpdate(self)
+	UpdateEbonMightCursorPosition(self, self.offsetX or EBON_MIGHT_CURSOR_OFFSET_X, self.offsetY or EBON_MIGHT_CURSOR_OFFSET_Y)
+end
+
+local function SetEbonMightCursorShown(shouldShow, expirationTime)
+	shouldShow = not not shouldShow
+	ebonMightMinExpirationTime = expirationTime
+
+	if not shouldShow and not ebonMightCursorFrame then
+		ebonMightCursorShown = false
+		return
+	end
+
+	local frame = EnsureEbonMightCursorFrame()
+	if shouldShow then
+		local offsetX, offsetY = ApplyEbonMightCursorSettings(frame)
+		frame.offsetX = offsetX
+		frame.offsetY = offsetY
+		UpdateEbonMightCursorPosition(frame, offsetX, offsetY)
+		if not ebonMightCursorShown then
+			frame:SetScript("OnUpdate", EbonMightCursorOnUpdate)
+			frame:Show()
+			ebonMightCursorShown = true
+		end
+	else
+		if ebonMightCursorShown then
+			frame:SetScript("OnUpdate", nil)
+			frame:Hide()
+			ebonMightCursorShown = false
+		end
 	end
 end
 
@@ -475,9 +610,52 @@ local function RefreshPlayerDamageRole()
 	return false
 end
 
+local function GetCurrentSpecializationID()
+	if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization and C_SpecializationInfo.GetSpecializationInfo then
+		local ok, specializationIndex = pcall(C_SpecializationInfo.GetSpecialization)
+		if ok and specializationIndex then
+			local infoOk, specID = pcall(C_SpecializationInfo.GetSpecializationInfo, specializationIndex)
+			if infoOk then
+				return specID
+			end
+		end
+	end
+
+	if GetSpecialization and GetSpecializationInfo then
+		local ok, specializationIndex = pcall(GetSpecialization)
+		if ok and specializationIndex then
+			local infoOk, specID = pcall(GetSpecializationInfo, specializationIndex)
+			if infoOk then
+				return specID
+			end
+		end
+	end
+end
+
+local function IsAugmentationEvoker()
+	return playerClass == "EVOKER" and GetCurrentSpecializationID() == AUGMENTATION_SPEC_ID
+end
+
 local function IsPotionAlertEnabled()
 	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.POTION_READY
 	return alertSettings and not alertSettings.disabled
+end
+
+local function IsEbonMightTrackerEnabled()
+	return type(MSBTProfiles.currentProfile.settings) == "table" and MSBTProfiles.currentProfile.settings.ebonMightTracker ~= false
+end
+
+local function RefreshEbonMightCombatState()
+	ebonMightPlayerInCombat = UnitAffectingCombat and UnitAffectingCombat("player") == true
+	return ebonMightPlayerInCombat
+end
+
+local function IsPlayerInCombatForEbonMight()
+	if ebonMightPlayerInCombat then
+		return true
+	end
+
+	return UnitAffectingCombat and UnitAffectingCombat("player") == true
 end
 
 local function GetCombatPotionCount(itemID)
@@ -904,6 +1082,233 @@ end
 
 module.RefreshPotionState = RefreshPotionState
 
+local function IsEbonMightAuraInfo(auraInfo)
+	if not auraInfo then
+		return false
+	end
+
+	local ok, isEbonMight = pcall(function()
+		local spellID = auraInfo.spellId or auraInfo.spellID
+		if IsSecretValue(spellID) then
+			return false
+		end
+		if type(spellID) == "number" and EBON_MIGHT_AURA_IDS[spellID] then
+			return true
+		end
+
+		local auraName = auraInfo.name
+		return ebonMightSpellName and auraName == ebonMightSpellName
+	end)
+
+	return ok and isEbonMight == true
+end
+
+local function GetEbonMightAuraExpirationInfo(auraInfo)
+	local ok, expirationTime, auraInstanceID = pcall(function()
+		if not IsEbonMightAuraInfo(auraInfo) then
+			return
+		end
+
+		local auraExpirationTime = auraInfo.expirationTime
+		if IsSecretValue(auraExpirationTime) or type(auraExpirationTime) ~= "number" or auraExpirationTime <= GetTime() then
+			return
+		end
+
+		local auraInstanceID = auraInfo.auraInstanceID
+		if IsSecretValue(auraInstanceID) then
+			auraInstanceID = nil
+		end
+
+		return auraExpirationTime, auraInstanceID
+	end)
+
+	if ok then
+		return expirationTime, auraInstanceID
+	end
+end
+
+local function GetEbonMightExpirationTime(unitID)
+	if not unitID then
+		return
+	end
+
+	if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName and ebonMightSpellName then
+		local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataBySpellName, unitID, ebonMightSpellName, "HELPFUL|PLAYER")
+		if ok then
+			local expirationTime, auraInstanceID = GetEbonMightAuraExpirationInfo(auraInfo)
+			if expirationTime then
+				return expirationTime, auraInstanceID
+			end
+		end
+	end
+
+	if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+		for index = 1, MAX_AURA_SCAN_COUNT do
+			local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataByIndex, unitID, index, "HELPFUL|PLAYER")
+			if not ok or not auraInfo then
+				break
+			end
+
+			local expirationTime, auraInstanceID = GetEbonMightAuraExpirationInfo(auraInfo)
+			if expirationTime then
+				return expirationTime, auraInstanceID
+			end
+		end
+	end
+end
+
+local function AddEbonMightUnitExpiration(unitID, state)
+	local expirationTime, auraInstanceID = GetEbonMightExpirationTime(unitID)
+	ebonMightAuraInstanceIDs[unitID] = auraInstanceID
+	ebonMightAuraFallbackUnits[unitID] = nil
+	if not expirationTime then
+		return
+	end
+
+	if not auraInstanceID then
+		ebonMightAuraFallbackUnits[unitID] = true
+	end
+
+	state.found = true
+	if not state.minExpirationTime or expirationTime < state.minExpirationTime then
+		state.minExpirationTime = expirationTime
+	end
+end
+
+local function ScanEbonMightState()
+	for unitID in pairs(ebonMightAuraInstanceIDs) do
+		ebonMightAuraInstanceIDs[unitID] = nil
+	end
+	for unitID in pairs(ebonMightAuraFallbackUnits) do
+		ebonMightAuraFallbackUnits[unitID] = nil
+	end
+
+	local state = { found = false }
+	if IsInRaid() then
+		for index = 1, GetNumGroupMembers() do
+			AddEbonMightUnitExpiration("raid" .. index, state)
+		end
+	elseif IsInGroup() then
+		AddEbonMightUnitExpiration("player", state)
+		for index = 1, GetNumSubgroupMembers() do
+			AddEbonMightUnitExpiration("party" .. index, state)
+		end
+	else
+		AddEbonMightUnitExpiration("player", state)
+	end
+
+	return state.found, state.minExpirationTime
+end
+
+local RefreshEbonMightTracker
+
+local function ScheduleEbonMightRefresh(delay)
+	if not delay or not C_Timer or not C_Timer.After then
+		return
+	end
+
+	ebonMightRefreshSequence = ebonMightRefreshSequence + 1
+	local sequence = ebonMightRefreshSequence
+	C_Timer.After(math_max(delay, 0.05), function()
+		if sequence ~= ebonMightRefreshSequence then
+			return
+		end
+
+		RefreshEbonMightTracker()
+	end)
+end
+
+local function HasAuraInstanceID(instanceIDs, auraInstanceID)
+	if not instanceIDs or not auraInstanceID then
+		return false
+	end
+
+	local ok, found = pcall(function()
+		if IsSecretValue(auraInstanceID) then
+			return false
+		end
+
+		for _, instanceID in ipairs(instanceIDs) do
+			if not IsSecretValue(instanceID) and instanceID == auraInstanceID then
+				return true
+			end
+		end
+
+		return false
+	end)
+
+	if ok then
+		return found == true
+	end
+
+	return false
+end
+
+local function IsGroupUnitID(unitID)
+	return unitID == "player" or (type(unitID) == "string" and (string_find(unitID, "party", 1, true) == 1 or string_find(unitID, "raid", 1, true) == 1))
+end
+
+local function DidEbonMightChange(unitID, updateInfo)
+	if not IsGroupUnitID(unitID) then
+		return false
+	end
+
+	if not updateInfo or updateInfo.isFullUpdate then
+		return true
+	end
+
+	if updateInfo.addedAuras then
+		for _, auraInfo in ipairs(updateInfo.addedAuras) do
+			if IsEbonMightAuraInfo(auraInfo) then
+				return true
+			end
+		end
+
+		if ebonMightCursorShown and IsPlayerInCombatForEbonMight() then
+			return true
+		end
+	end
+
+	local trackedAuraInstanceID = ebonMightAuraInstanceIDs[unitID]
+	if ebonMightAuraFallbackUnits[unitID] and (updateInfo.updatedAuraInstanceIDs or updateInfo.removedAuraInstanceIDs) then
+		return true
+	end
+
+	return HasAuraInstanceID(updateInfo.updatedAuraInstanceIDs, trackedAuraInstanceID)
+		or HasAuraInstanceID(updateInfo.removedAuraInstanceIDs, trackedAuraInstanceID)
+end
+
+RefreshEbonMightTracker = function()
+	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+		SetEbonMightCursorShown(false)
+		return
+	end
+
+	if not IsEbonMightTrackerEnabled() or not IsAugmentationEvoker() then
+		SetEbonMightCursorShown(false)
+		return
+	end
+
+	local found, minExpirationTime = ScanEbonMightState()
+	local now = GetTime()
+	if found and minExpirationTime then
+		local remaining = minExpirationTime - now
+		if remaining <= EBON_MIGHT_PANDEMIC_THRESHOLD then
+			SetEbonMightCursorShown(true, minExpirationTime)
+			ScheduleEbonMightRefresh(remaining + 0.05)
+		else
+			SetEbonMightCursorShown(false)
+			ScheduleEbonMightRefresh(remaining - EBON_MIGHT_PANDEMIC_THRESHOLD + 0.05)
+		end
+	elseif IsPlayerInCombatForEbonMight() then
+		SetEbonMightCursorShown(true)
+	else
+		SetEbonMightCursorShown(false)
+	end
+end
+
+module.RefreshEbonMightTracker = RefreshEbonMightTracker
+
 local function NameContainsContext(name, context)
 	return type(name) == "string" and string_find(string_lower(name), context, nil, true) ~= nil
 end
@@ -1227,6 +1632,7 @@ module.RefreshReadyAlertStates = function()
 	RefreshBloodlustState()
 	RefreshPotionState()
 	RefreshLoadoutMismatchState()
+	RefreshEbonMightTracker()
 end
 
 local function RefreshBloodlustStateSoon()
@@ -1333,16 +1739,30 @@ local function GetSoundChannelDebugState()
 	)
 end
 
+local function GetEbonMightDebugState()
+	local found, minExpirationTime = ScanEbonMightState()
+	return string_format(
+		"EBON state: enabled=%s aug=%s found=%s remaining=%s shown=%s",
+		tostring(IsEbonMightTrackerEnabled()),
+		tostring(IsAugmentationEvoker()),
+		tostring(found),
+		tostring(minExpirationTime and (minExpirationTime - GetTime()) or nil),
+		tostring(ebonMightCursorFrame and ebonMightCursorFrame:IsShown())
+	)
+end
+
 function eventFrame:PLAYER_LOGIN()
 	MSBTAnimations.UpdateScrollAreas()
 	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.normalFontName)
 	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.critFontName)
+	RefreshEbonMightCombatState()
 	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
 	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:PLAYER_ENTERING_WORLD()
+	RefreshEbonMightCombatState()
 	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
 	RefreshReadyAlertStatesSoon()
@@ -1420,6 +1840,16 @@ function eventFrame:PLAYER_ROLES_ASSIGNED()
 	RefreshPotionState()
 end
 
+function eventFrame:PLAYER_REGEN_DISABLED()
+	ebonMightPlayerInCombat = true
+	ScheduleEbonMightRefresh(EBON_MIGHT_COMBAT_ENTRY_DELAY)
+end
+
+function eventFrame:PLAYER_REGEN_ENABLED()
+	ebonMightPlayerInCombat = false
+	RefreshEbonMightTracker()
+end
+
 function eventFrame:BAG_UPDATE_DELAYED()
 	RefreshPotionState()
 end
@@ -1467,6 +1897,10 @@ function eventFrame:UNIT_DISPLAYPOWER(unitID)
 end
 
 function eventFrame:UNIT_AURA(unitID, updateInfo)
+	if DidEbonMightChange(unitID, updateInfo) then
+		ScheduleEbonMightRefresh(0.05)
+	end
+
 	if unitID ~= "player" or not isBloodlustDungeon or not currentBloodlustSpellID then
 		return
 	end
@@ -1524,6 +1958,8 @@ eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
 eventFrame:RegisterEvent("UNIT_PET")
 eventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("UNIT_HEALTH")
@@ -1551,6 +1987,10 @@ SlashCmdList.DORQUTILITIES = function(input)
 	elseif input == "sound" then
 		EnforceSoundChannelCapSoon()
 		Print(GetSoundChannelDebugState())
+		return
+	elseif input == "ebon" then
+		RefreshEbonMightTracker()
+		Print(GetEbonMightDebugState())
 		return
 	elseif input == "bltest" then
 		SetBloodlustAlertShown(true)

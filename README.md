@@ -45,6 +45,13 @@ The warning only activates when you have relevant presets:
 For example, if you are in a raid and have a talent loadout named
 `raid no interrupt`, the alert expects that saved raid loadout to be selected.
 
+### Ebon Might Tracker
+
+Augmentation Evokers can show a cursor-following Ebon Might reminder. The icon
+appears when Ebon Might is missing in combat or when the shortest remaining
+Ebon Might buff is inside its `4` second refresh window. The window accounts for
+Ebon Might's `3` second pandemic period plus roughly `1` second of cast time.
+
 ### Warcraft Logs Profile Helper
 
 Player context menus include a `Copy Warcraft Logs Profile` option when
@@ -75,6 +82,7 @@ The settings panel lets you enable or disable:
 - Bloodlust ready alert
 - Combat potion ready alert
 - M+ / raid loadout warning
+- Ebon Might tracker
 - Warcraft Logs context menu
 - Sound channel override
 
@@ -87,6 +95,7 @@ It also includes a `Reset Toggles` button to restore the default feature states.
 /dorqutilities pot
 /dorqutilities loadout
 /dorqutilities sound
+/dorqutilities ebon
 /dorqutilities bltest
 ```
 
