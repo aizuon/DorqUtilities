@@ -30,6 +30,21 @@ DorqUtilities can show a static `POT READY` message for DPS players in dungeon
 and Mythic+ contexts when a tracked Midnight combat potion is in your bags and
 ready to use.
 
+### M+ / Raid Loadout Warning
+
+DorqUtilities can show a static top-screen warning when your current equipment
+set or selected talent loadout does not match the current M+ or raid context.
+
+The warning only activates when you have relevant presets:
+
+- In Mythic+, equipment sets and talent loadouts with `mp` in their names are
+  treated as M+ presets.
+- In raids, equipment sets and talent loadouts with `raid` in their names are
+  treated as raid presets.
+
+For example, if you are in a raid and have a talent loadout named
+`raid no interrupt`, the alert expects that saved raid loadout to be selected.
+
 ### Warcraft Logs Profile Helper
 
 Player context menus include a `Copy Warcraft Logs Profile` option when
@@ -54,6 +69,7 @@ The settings panel lets you enable or disable:
 - Low mana warning
 - Bloodlust ready alert
 - Combat potion ready alert
+- M+ / raid loadout warning
 - Warcraft Logs context menu
 
 It also includes a `Reset Toggles` button to restore the default feature states.
@@ -63,6 +79,7 @@ It also includes a `Reset Toggles` button to restore the default feature states.
 ```text
 /dorqutilities bl
 /dorqutilities pot
+/dorqutilities loadout
 /dorqutilities bltest
 ```
 
