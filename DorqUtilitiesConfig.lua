@@ -63,6 +63,10 @@ local masterProfile = {
 		POTION_READY = {
 			message = "POT READY",
 		},
+		LOADOUT_MISMATCH = {
+			message = "CHECK %c LOADOUT: %m",
+			fontSize = 24,
+		},
 	},
 
 	normalFontName = L.DEFAULT_FONT_NAME,
@@ -111,6 +115,12 @@ local featureGroups = {
 				tooltip = "Shows a static POT READY message in dungeon instances for DPS players when a tracked combat potion in your bags is ready.",
 				displayNote = "Static middle-screen alert.",
 				alerts = { "POTION_READY" },
+			},
+			{
+				label = "M+ / raid loadout warning",
+				tooltip = "Shows a static warning near the top of the screen when your active equipment set or talent loadout does not match available presets containing mp or raid.",
+				displayNote = "Static top-screen alert.",
+				alerts = { "LOADOUT_MISMATCH" },
 			},
 			{
 				label = "Warcraft Logs context menu",
