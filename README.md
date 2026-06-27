@@ -55,6 +55,11 @@ Supported menu contexts include target, party, raid, friends, guild,
 Battle.net friends, LFG search results, and applicant entries when the game API
 provides enough character information.
 
+### Sound Channel Override
+
+DorqUtilities can keep WoW's `Sound_NumChannels` CVar set to exactly `96`. This
+overrides other addons that raise or lower the value.
+
 ### Feature Toggles
 
 Open the DorqUtilities settings panel with:
@@ -71,6 +76,7 @@ The settings panel lets you enable or disable:
 - Combat potion ready alert
 - M+ / raid loadout warning
 - Warcraft Logs context menu
+- Sound channel override
 
 It also includes a `Reset Toggles` button to restore the default feature states.
 
@@ -80,6 +86,7 @@ It also includes a `Reset Toggles` button to restore the default feature states.
 /dorqutilities bl
 /dorqutilities pot
 /dorqutilities loadout
+/dorqutilities sound
 /dorqutilities bltest
 ```
 

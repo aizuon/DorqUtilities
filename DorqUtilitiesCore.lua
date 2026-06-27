@@ -17,6 +17,7 @@ local math_max = math.max
 local table_concat = table.concat
 local C_ChallengeMode = C_ChallengeMode
 local C_ClassTalents = C_ClassTalents
+local C_CVar = C_CVar
 local C_EquipmentSet = C_EquipmentSet
 local C_Item = C_Item
 local C_SpecializationInfo = C_SpecializationInfo
@@ -27,6 +28,7 @@ local C_UnitAuras = C_UnitAuras
 local GetInstanceInfo = GetInstanceInfo
 local GetItemCooldown = GetItemCooldown
 local GetItemCount = GetItemCount
+local GetCVar = GetCVar
 local GetSpecialization = GetSpecialization
 local GetSpecializationInfo = GetSpecializationInfo
 local GetSpecializationRole = GetSpecializationRole
@@ -34,6 +36,7 @@ local GetTime = GetTime
 local IsInInstance = IsInInstance
 local IsPlayerSpell = IsPlayerSpell
 local issecretvalue = issecretvalue
+local SetCVar = SetCVar
 local UnitClass = UnitClass
 local UnitGroupRolesAssigned = UnitGroupRolesAssigned
 local UnitHealth = UnitHealth
@@ -58,6 +61,9 @@ local LOADOUT_CONTEXT_LABELS = {
 	raid = "Raid",
 }
 local LOADOUT_REFRESH_DELAYS = { 0.1, 0.35, 0.8, 1.5 }
+local SOUND_NUM_CHANNELS_CVAR = "Sound_NumChannels"
+local SOUND_NUM_CHANNELS_TARGET = 96
+local SOUND_CHANNEL_REPAIR_DELAYS = { 0.05, 0.25, 0.75, 1.25, 2.5 }
 local GCD_THRESHOLD = 1.5
 local MAX_AURA_SCAN_COUNT = 80
 
@@ -137,6 +143,7 @@ local potionAlertShown
 local loadoutMismatchAlertFrame
 local loadoutMismatchAlertShown
 local loadoutRefreshSequence = 0
+local soundChannelRepairSequence = 0
 local potionCooldownCheckReadyAt
 local currentBloodlustSpellID
 local hasBloodlustLockoutDebuff = false
@@ -543,10 +550,90 @@ local function IsBloodlustAlertEnabled()
 	return alertSettings and not alertSettings.disabled
 end
 
+local function IsSoundChannelCapEnabled()
+	return type(MSBTProfiles.currentProfile.settings) == "table" and MSBTProfiles.currentProfile.settings.soundChannelCap ~= false
+end
+
 local function IsLoadoutMismatchAlertEnabled()
 	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.LOADOUT_MISMATCH
 	return alertSettings and not alertSettings.disabled
 end
+
+local function ReadSoundNumChannels()
+	local value
+	if C_CVar and C_CVar.GetCVar then
+		local ok, cvarValue = pcall(C_CVar.GetCVar, SOUND_NUM_CHANNELS_CVAR)
+		if ok then
+			value = cvarValue
+		end
+	end
+
+	if value == nil and GetCVar then
+		local ok, cvarValue = pcall(GetCVar, SOUND_NUM_CHANNELS_CVAR)
+		if ok then
+			value = cvarValue
+		end
+	end
+
+	return tonumber(value), value
+end
+
+local function WriteSoundNumChannels(value)
+	local cvarValue = tostring(value)
+	if C_CVar and C_CVar.SetCVar then
+		local ok = pcall(C_CVar.SetCVar, SOUND_NUM_CHANNELS_CVAR, cvarValue)
+		if ok then
+			return true
+		end
+	end
+
+	if SetCVar then
+		local ok = pcall(SetCVar, SOUND_NUM_CHANNELS_CVAR, cvarValue)
+		if ok then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function EnforceSoundChannelCap()
+	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+		return false
+	end
+
+	if not IsSoundChannelCapEnabled() then
+		return false
+	end
+
+	local current = ReadSoundNumChannels()
+	if current == SOUND_NUM_CHANNELS_TARGET then
+		return false
+	end
+
+	return WriteSoundNumChannels(SOUND_NUM_CHANNELS_TARGET)
+end
+
+local function EnforceSoundChannelCapSoon()
+	EnforceSoundChannelCap()
+	if not C_Timer or not C_Timer.After then
+		return
+	end
+
+	soundChannelRepairSequence = soundChannelRepairSequence + 1
+	local sequence = soundChannelRepairSequence
+	for _, delay in ipairs(SOUND_CHANNEL_REPAIR_DELAYS) do
+		C_Timer.After(delay, function()
+			if sequence ~= soundChannelRepairSequence then
+				return
+			end
+
+			EnforceSoundChannelCap()
+		end)
+	end
+end
+
+module.RefreshSoundChannelCap = EnforceSoundChannelCapSoon
 
 local function CanPlayerClassProvideBloodlust()
 	return bloodlustSpellsByClass[playerClass] ~= nil
@@ -1233,15 +1320,30 @@ local function GetPotionDebugState()
 	)
 end
 
+local function GetSoundChannelDebugState()
+	local numericValue, rawValue = ReadSoundNumChannels()
+	return string_format(
+		"SOUND state: enabled=%s modDisabled=%s cvar=%s raw=%s target=%s changed=%s",
+		tostring(IsSoundChannelCapEnabled()),
+		tostring(MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled()),
+		tostring(numericValue),
+		tostring(rawValue),
+		tostring(SOUND_NUM_CHANNELS_TARGET),
+		tostring(EnforceSoundChannelCap())
+	)
+end
+
 function eventFrame:PLAYER_LOGIN()
 	MSBTAnimations.UpdateScrollAreas()
 	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.normalFontName)
 	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.critFontName)
+	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
 	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:PLAYER_ENTERING_WORLD()
+	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
 	RefreshReadyAlertStatesSoon()
 end
@@ -1273,6 +1375,12 @@ end
 
 function eventFrame:ACTIVE_COMBAT_CONFIG_CHANGED()
 	RefreshLoadoutMismatchStateSoon()
+end
+
+function eventFrame:CVAR_UPDATE(cvarName)
+	if string_lower(tostring(cvarName or "")) == string_lower(SOUND_NUM_CHANNELS_CVAR) then
+		EnforceSoundChannelCapSoon()
+	end
 end
 
 function eventFrame:GROUP_ROSTER_UPDATE()
@@ -1407,6 +1515,7 @@ eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 eventFrame:RegisterEvent("TRAIT_CONFIG_LIST_UPDATED")
 eventFrame:RegisterEvent("ACTIVE_COMBAT_CONFIG_CHANGED")
+eventFrame:RegisterEvent("CVAR_UPDATE")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
@@ -1438,6 +1547,10 @@ SlashCmdList.DORQUTILITIES = function(input)
 	elseif input == "loadout" then
 		RefreshLoadoutMismatchState()
 		Print(GetLoadoutDebugState())
+		return
+	elseif input == "sound" then
+		EnforceSoundChannelCapSoon()
+		Print(GetSoundChannelDebugState())
 		return
 	elseif input == "bltest" then
 		SetBloodlustAlertShown(true)

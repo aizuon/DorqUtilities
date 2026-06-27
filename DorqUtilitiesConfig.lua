@@ -33,6 +33,7 @@ local masterProfile = {
 	events = {},
 
 	settings = {
+		soundChannelCap = true,
 		warcraftLogsContextMenu = true,
 	},
 
@@ -127,6 +128,12 @@ local featureGroups = {
 				tooltip = "Adds a Copy Warcraft Logs Profile option to player context menus.",
 				displayNote = "Player right-click context menus.",
 				settings = { "warcraftLogsContextMenu" },
+			},
+			{
+				label = "Sound channel override",
+				tooltip = "Keeps Sound_NumChannels set to 96, overriding addons that raise or lower it.",
+				displayNote = "Sound CVar guard.",
+				settings = { "soundChannelCap" },
 			},
 		},
 	},

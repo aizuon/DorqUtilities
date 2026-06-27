@@ -56,6 +56,9 @@ local function CreateFeatureRow(parent, feature, xOffset, yOffset, rowWidth)
 		if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
 			DorqUtilities.Core.RefreshReadyAlertStates()
 		end
+		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
+			DorqUtilities.Core.RefreshSoundChannelCap()
+		end
 		RefreshCheckButtons()
 	end)
 
@@ -118,6 +121,9 @@ local function BuildSettingsPanel(panel)
 		Profiles.ResetFeatureToggles()
 		if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
 			DorqUtilities.Core.RefreshReadyAlertStates()
+		end
+		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
+			DorqUtilities.Core.RefreshSoundChannelCap()
 		end
 		RefreshCheckButtons()
 		Print("DorqUtilities major feature toggles were reset to their defaults.")
