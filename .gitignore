@@ -1,0 +1,16 @@
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+
+# Local addon/package output
+*.zip
+*.7z
+*.rar
