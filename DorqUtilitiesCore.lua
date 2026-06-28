@@ -6,8 +6,7 @@ local module = {}
 local moduleName = "Core"
 DorqUtilities[moduleName] = module
 
-local MSBTAnimations = DorqUtilities.Animations
-local MSBTProfiles = DorqUtilities.Profiles
+local Profiles = DorqUtilities.Profiles
 
 local string_find = string.find
 local string_format = string.format
@@ -48,10 +47,8 @@ local UnitPowerMax = UnitPowerMax
 local UnitPowerPercent = UnitPowerPercent
 
 local Print = DorqUtilities.Print
-local sounds = DorqUtilities.Media.sounds
 
 local MANA_POWER_TYPE = Enum.PowerType.Mana
-local DEFAULT_ALERT_SCROLL_AREA = "Notification"
 local DEFAULT_SOUND_PATH = "Interface\\AddOns\\DorqUtilities\\Sounds\\"
 local BLOODLUST_READY_MESSAGE = "BL READY"
 local POTION_READY_MESSAGE = "POT READY"
@@ -158,6 +155,8 @@ local bloodlustAlertFrame
 local bloodlustAlertShown
 local potionAlertFrame
 local potionAlertShown
+local lowResourceAlertFrame
+local lowResourceAlertSequence = 0
 local loadoutMismatchAlertFrame
 local loadoutMismatchAlertShown
 local loadoutRefreshSequence = 0
@@ -438,6 +437,50 @@ local function SetLoadoutMismatchAlertShown(shouldShow, message)
 	end
 end
 
+local function EnsureLowResourceAlertFrame()
+	if lowResourceAlertFrame then
+		return lowResourceAlertFrame
+	end
+
+	local frame = CreateFrame("Frame", "DorqUtilitiesLowResourceAlertFrame", UIParent)
+	frame:SetFrameStrata("HIGH")
+	frame:SetSize(420, 54)
+	frame:SetPoint("CENTER", UIParent, "CENTER", -175, 120)
+	frame:Hide()
+
+	local fontString = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+	fontString:SetAllPoints(frame)
+	fontString:SetJustifyH("CENTER")
+	fontString:SetJustifyV("MIDDLE")
+	fontString:SetTextColor(1, 0.5, 0.5, 1)
+	fontString:SetShadowColor(0, 0, 0, 1)
+	fontString:SetShadowOffset(2, -2)
+	frame.text = fontString
+
+	lowResourceAlertFrame = frame
+	return frame
+end
+
+local function ShowLowResourceAlert(message, colorR, colorG, colorB, fontSize)
+	local frame = EnsureLowResourceAlertFrame()
+	lowResourceAlertSequence = lowResourceAlertSequence + 1
+	local sequence = lowResourceAlertSequence
+
+	frame.text:SetText(message or "")
+	frame.text:SetTextColor(colorR or 1, colorG or 1, colorB or 1, 1)
+	frame.text:SetFont("Fonts\\FRIZQT__.TTF", fontSize or 26, "OUTLINE")
+	frame:SetAlpha(1)
+	frame:Show()
+
+	if C_Timer and C_Timer.After then
+		C_Timer.After(3, function()
+			if sequence == lowResourceAlertSequence and frame then
+				frame:Hide()
+			end
+		end)
+	end
+end
+
 local function FormatMessage(template, tokens)
 	local message = template or ""
 	if tokens and tokens.power ~= nil then
@@ -453,11 +496,11 @@ local function FormatMessage(template, tokens)
 end
 
 local function PlayConfiguredAlertSound(soundFile)
-	if not soundFile or MSBTProfiles.currentProfile.soundsDisabled then
+	if not soundFile then
 		return
 	end
 
-	local resolvedPath = sounds[soundFile] or soundFile
+	local resolvedPath = soundFile
 	if type(resolvedPath) == "string" then
 		if resolvedPath == "" then
 			return
@@ -484,17 +527,7 @@ local function DisplayAlert(alertSettings, message)
 		return
 	end
 
-	MSBTAnimations.DisplayMessage(
-		message,
-		alertSettings.scrollArea or DEFAULT_ALERT_SCROLL_AREA,
-		alertSettings.alwaysSticky,
-		(alertSettings.colorR or 1) * 255,
-		(alertSettings.colorG or 1) * 255,
-		(alertSettings.colorB or 1) * 255,
-		alertSettings.fontSize,
-		alertSettings.fontName,
-		alertSettings.outlineIndex
-	)
+	ShowLowResourceAlert(message, alertSettings.colorR or 1, alertSettings.colorG or 1, alertSettings.colorB or 1, alertSettings.fontSize)
 	PlayConfiguredAlertSound(alertSettings.soundFile)
 end
 
@@ -535,7 +568,7 @@ local function GetManaPercent()
 end
 
 local function ShowLowHealth()
-	local alert = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.LOW_HEALTH
+	local alert = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOW_HEALTH
 	if not alert or alert.disabled then
 		lowHealthActive = false
 		return
@@ -564,7 +597,7 @@ local function ShowLowMana()
 		return
 	end
 
-	local alert = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.LOW_MANA
+	local alert = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOW_MANA
 	if not alert or alert.disabled then
 		lowManaActive = false
 		return
@@ -639,12 +672,12 @@ local function IsAugmentationEvoker()
 end
 
 local function IsPotionAlertEnabled()
-	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.POTION_READY
+	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.POTION_READY
 	return alertSettings and not alertSettings.disabled
 end
 
 local function IsEbonMightTrackerEnabled()
-	return type(MSBTProfiles.currentProfile.settings) == "table" and MSBTProfiles.currentProfile.settings.ebonMightTracker ~= false
+	return type(Profiles.currentProfile.settings) == "table" and Profiles.currentProfile.settings.ebonMightTracker ~= false
 end
 
 local function RefreshEbonMightCombatState()
@@ -726,16 +759,16 @@ local function IsChallengeModeActive()
 end
 
 local function IsBloodlustAlertEnabled()
-	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.BLOODLUST_READY
+	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.BLOODLUST_READY
 	return alertSettings and not alertSettings.disabled
 end
 
 local function IsSoundChannelCapEnabled()
-	return type(MSBTProfiles.currentProfile.settings) == "table" and MSBTProfiles.currentProfile.settings.soundChannelCap ~= false
+	return type(Profiles.currentProfile.settings) == "table" and Profiles.currentProfile.settings.soundChannelCap ~= false
 end
 
 local function IsLoadoutMismatchAlertEnabled()
-	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.LOADOUT_MISMATCH
+	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOADOUT_MISMATCH
 	return alertSettings and not alertSettings.disabled
 end
 
@@ -778,7 +811,7 @@ local function WriteSoundNumChannels(value)
 end
 
 local function EnforceSoundChannelCap()
-	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		return false
 	end
 
@@ -975,7 +1008,7 @@ local function RefreshBloodlustInstanceState()
 end
 
 local function ShouldShowBloodlustAlert()
-	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		return false
 	end
 
@@ -1059,7 +1092,7 @@ local function HasReadyCombatPotion()
 end
 
 RefreshPotionState = function()
-	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		SetPotionAlertShown(false)
 		return
 	end
@@ -1301,7 +1334,7 @@ local function DidEbonMightChange(unitID, updateInfo)
 end
 
 RefreshEbonMightTracker = function()
-	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		SetEbonMightCursorShown(false)
 		return
 	end
@@ -1565,7 +1598,7 @@ local function GetLoadoutDebugState()
 end
 
 local function RefreshLoadoutMismatchState()
-	if MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled() then
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		SetLoadoutMismatchAlertShown(false)
 		return
 	end
@@ -1597,7 +1630,7 @@ local function RefreshLoadoutMismatchState()
 		return
 	end
 
-	local alertSettings = MSBTProfiles.currentProfile.alerts and MSBTProfiles.currentProfile.alerts.LOADOUT_MISMATCH
+	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOADOUT_MISMATCH
 	local message = FormatMessage(
 		(alertSettings and alertSettings.message) or "CHECK %c LOADOUT: %m",
 		{
@@ -1712,7 +1745,7 @@ local function GetBloodlustDebugState()
 		"BL state: class=%s enabled=%s modDisabled=%s dungeon=%s challenge=%s inInstance=%s instanceType=%s difficultyID=%s spell=%s lockout=%s shown=%s shouldShow=%s",
 		tostring(playerClass),
 		tostring(IsBloodlustAlertEnabled()),
-		tostring(MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled()),
+		tostring(Profiles.IsModDisabled and Profiles.IsModDisabled()),
 		tostring(isBloodlustDungeon),
 		tostring(isBloodlustChallengeMode),
 		tostring(inInstance),
@@ -1740,7 +1773,7 @@ local function GetPotionDebugState()
 	return string_format(
 		"POT state: enabled=%s modDisabled=%s dungeon=%s dps=%s hasPotion=%s shown=%s ready=%s",
 		tostring(IsPotionAlertEnabled()),
-		tostring(MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled()),
+		tostring(Profiles.IsModDisabled and Profiles.IsModDisabled()),
 		tostring(isBloodlustDungeon),
 		tostring(isPlayerDamageRole),
 		tostring(hasPotion),
@@ -1754,7 +1787,7 @@ local function GetSoundChannelDebugState()
 	return string_format(
 		"SOUND state: enabled=%s modDisabled=%s cvar=%s raw=%s target=%s changed=%s",
 		tostring(IsSoundChannelCapEnabled()),
-		tostring(MSBTProfiles.IsModDisabled and MSBTProfiles.IsModDisabled()),
+		tostring(Profiles.IsModDisabled and Profiles.IsModDisabled()),
 		tostring(numericValue),
 		tostring(rawValue),
 		tostring(SOUND_NUM_CHANNELS_TARGET),
@@ -1775,9 +1808,6 @@ local function GetEbonMightDebugState()
 end
 
 function eventFrame:PLAYER_LOGIN()
-	MSBTAnimations.UpdateScrollAreas()
-	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.normalFontName)
-	MSBTAnimations.LoadFont(MSBTProfiles.currentProfile.critFontName)
 	RefreshEbonMightCombatState()
 	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()

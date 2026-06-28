@@ -2,21 +2,11 @@
 ## Version: 1.1.0
 ## Title: DorqUtilities
 ## Author: GitHub Copilot
-## Notes: Standalone lightweight MSBT-style notifications for safe Retail events with configurable major feature toggles.
-## OptionalDeps: LibSharedMedia-3.0
+## Notes: Lightweight utility alerts and quality-of-life helpers for Retail.
 ## SavedVariables: DorqUtilities_SavedVars
 
-Libs\LibStub.lua
-Libs\CallbackHandler-1.0.lua
-Libs\LibSharedMedia-3.0.lua
-
 DorqUtilities.lua
-Localization\localization.xml
 DorqUtilitiesConfig.lua
 DorqUtilitiesOptions.lua
-DorqUtilitiesMedia.lua
-DorqUtilitiesAnimations.lua
-DorqUtilitiesAPI.lua
-DorqUtilitiesAnimationStyles.lua
 DorqUtilitiesCore.lua
 DorqUtilitiesWarcraftLogs.lua

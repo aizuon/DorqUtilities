@@ -7,9 +7,8 @@ It focuses on a small set of practical dungeon alerts and quality-of-life tools.
 
 ### Low Resource Alerts
 
-DorqUtilities shows MSBT-style scrolling warnings when your health or mana drops
-below the configured threshold. The defaults include bundled warning sounds and
-large notification text.
+DorqUtilities shows a large notification and warning sound when your health or
+mana drops below the configured threshold.
 
 - Low health warning for all classes.
 - Low mana warning for mana-using classes.
@@ -108,8 +107,7 @@ The TOC interface is:
 120007
 ```
 
-## Bundled Libraries and Media
+## Bundled Media
 
-DorqUtilities embeds `LibStub`, `CallbackHandler-1.0`, and
-`LibSharedMedia-3.0`. It also ships bundled fonts and alert sounds used by the
-default notification styles.
+DorqUtilities ships only the alert sounds used by the default low health and low
+mana warnings.
