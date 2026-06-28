@@ -213,11 +213,24 @@ local blackAttunementState = {
 	alertFrame = nil,
 	alertShown = false,
 	hasTalent = false,
+	hasTalentSettled = false,
 	talentDirty = true,
 	auraInstanceID = nil,
 	auraFallback = false,
 	draconicAttunementsSpellID = 403208,
 }
+local eventState = {
+	groupAuras = nil,
+	instanceContextDirty = true,
+	inInstance = false,
+	instanceType = nil,
+	difficultyID = nil,
+	isChallengeMode = false,
+	isDungeon = false,
+	loadoutContext = nil,
+}
+local alertFrames = {}
+local debugState = {}
 
 if C_Spell and C_Spell.GetSpellName then
 	for _, auraDefinition in pairs(auraDefinitions) do
@@ -364,7 +377,7 @@ local function ScheduleRefreshSequence(sequenceKey, delays, callback)
 	end
 end
 
-local function EnsureBloodlustAlertFrame()
+function alertFrames.EnsureBloodlustAlertFrame()
 	if bloodlustState.alertFrame then
 		return bloodlustState.alertFrame
 	end
@@ -389,7 +402,7 @@ local function EnsureBloodlustAlertFrame()
 	return frame
 end
 
-local function SetBloodlustAlertShown(shouldShow)
+function alertFrames.SetBloodlustAlertShown(shouldShow)
 	shouldShow = not not shouldShow
 	if bloodlustState.alertShown == shouldShow then
 		return
@@ -400,7 +413,7 @@ local function SetBloodlustAlertShown(shouldShow)
 		return
 	end
 
-	local frame = EnsureBloodlustAlertFrame()
+	local frame = alertFrames.EnsureBloodlustAlertFrame()
 	if shouldShow then
 		frame:Show()
 	else
@@ -408,7 +421,7 @@ local function SetBloodlustAlertShown(shouldShow)
 	end
 end
 
-local function EnsurePotionAlertFrame()
+function alertFrames.EnsurePotionAlertFrame()
 	if potionState.alertFrame then
 		return potionState.alertFrame
 	end
@@ -433,7 +446,7 @@ local function EnsurePotionAlertFrame()
 	return frame
 end
 
-local function SetPotionAlertShown(shouldShow)
+function alertFrames.SetPotionAlertShown(shouldShow)
 	shouldShow = not not shouldShow
 	if potionState.alertShown == shouldShow then
 		return
@@ -444,7 +457,7 @@ local function SetPotionAlertShown(shouldShow)
 		return
 	end
 
-	local frame = EnsurePotionAlertFrame()
+	local frame = alertFrames.EnsurePotionAlertFrame()
 	if shouldShow then
 		frame:Show()
 	else
@@ -563,7 +576,7 @@ local function SetEbonMightCursorShown(shouldShow, expirationTime)
 	end
 end
 
-local function EnsureLoadoutMismatchAlertFrame()
+function alertFrames.EnsureLoadoutMismatchAlertFrame()
 	if loadoutState.alertFrame then
 		return loadoutState.alertFrame
 	end
@@ -587,7 +600,7 @@ local function EnsureLoadoutMismatchAlertFrame()
 	return frame
 end
 
-local function SetLoadoutMismatchAlertShown(shouldShow, message)
+function alertFrames.SetLoadoutMismatchAlertShown(shouldShow, message)
 	shouldShow = not not shouldShow
 	if loadoutState.alertShown == shouldShow and (not shouldShow or not loadoutState.alertFrame or loadoutState.alertFrame.text:GetText() == message) then
 		return
@@ -598,7 +611,7 @@ local function SetLoadoutMismatchAlertShown(shouldShow, message)
 		return
 	end
 
-	local frame = EnsureLoadoutMismatchAlertFrame()
+	local frame = alertFrames.EnsureLoadoutMismatchAlertFrame()
 	if shouldShow then
 		frame.text:SetText(message)
 		frame:Show()
@@ -607,7 +620,7 @@ local function SetLoadoutMismatchAlertShown(shouldShow, message)
 	end
 end
 
-local function EnsureBlackAttunementAlertFrame()
+function alertFrames.EnsureBlackAttunementAlertFrame()
 	if blackAttunementState.alertFrame then
 		return blackAttunementState.alertFrame
 	end
@@ -631,7 +644,7 @@ local function EnsureBlackAttunementAlertFrame()
 	return frame
 end
 
-local function SetBlackAttunementAlertShown(shouldShow, message)
+function alertFrames.SetBlackAttunementAlertShown(shouldShow, message)
 	shouldShow = not not shouldShow
 	if blackAttunementState.alertShown == shouldShow and (not shouldShow or not blackAttunementState.alertFrame or blackAttunementState.alertFrame.text:GetText() == message) then
 		return
@@ -642,7 +655,7 @@ local function SetBlackAttunementAlertShown(shouldShow, message)
 		return
 	end
 
-	local frame = EnsureBlackAttunementAlertFrame()
+	local frame = alertFrames.EnsureBlackAttunementAlertFrame()
 	if shouldShow then
 		frame.text:SetText(message)
 		frame:Show()
@@ -651,7 +664,7 @@ local function SetBlackAttunementAlertShown(shouldShow, message)
 	end
 end
 
-local function EnsureLowResourceAlertFrame()
+function alertFrames.EnsureLowResourceAlertFrame()
 	if lowResourceState.frame then
 		return lowResourceState.frame
 	end
@@ -675,8 +688,8 @@ local function EnsureLowResourceAlertFrame()
 	return frame
 end
 
-local function ShowLowResourceAlert(message, colorR, colorG, colorB, fontSize)
-	local frame = EnsureLowResourceAlertFrame()
+function alertFrames.ShowLowResourceAlert(message, colorR, colorG, colorB, fontSize)
+	local frame = alertFrames.EnsureLowResourceAlertFrame()
 	lowResourceState.sequence = lowResourceState.sequence + 1
 	local sequence = lowResourceState.sequence
 
@@ -741,7 +754,7 @@ local function DisplayAlert(alertSettings, message)
 		return
 	end
 
-	ShowLowResourceAlert(message, alertSettings.colorR or 1, alertSettings.colorG or 1, alertSettings.colorB or 1, alertSettings.fontSize)
+	alertFrames.ShowLowResourceAlert(message, alertSettings.colorR or 1, alertSettings.colorG or 1, alertSettings.colorB or 1, alertSettings.fontSize)
 	PlayConfiguredAlertSound(alertSettings.soundFile)
 end
 
@@ -889,6 +902,7 @@ end
 
 local function MarkDraconicAttunementsTalentDirty()
 	blackAttunementState.talentDirty = true
+	blackAttunementState.hasTalentSettled = false
 end
 
 local function IsKnownPlayerSpell(spellID)
@@ -919,31 +933,45 @@ end
 local function IsTalentSpellSelected(spellID)
 	local configID = GetActiveTalentConfigID()
 	if not configID or not C_Traits or not C_Traits.GetConfigInfo or not C_Traits.GetTreeNodes or not C_Traits.GetNodeInfo then
-		return false
+		return nil
 	end
 
 	local ok, configInfo = pcall(C_Traits.GetConfigInfo, configID)
 	if not ok or type(configInfo) ~= "table" then
-		return false
+		return nil
 	end
 
 	local treeIDs = type(configInfo.treeIDs) == "table" and configInfo.treeIDs or (configInfo.treeID and { configInfo.treeID } or nil)
 	if not treeIDs then
-		return false
+		return nil
 	end
 
+	local scannedNodes = false
 	for _, treeID in ipairs(treeIDs) do
 		local nodesOk, nodeIDs = pcall(C_Traits.GetTreeNodes, treeID)
 		if nodesOk and type(nodeIDs) == "table" then
+			scannedNodes = true
 			for _, nodeID in ipairs(nodeIDs) do
 				local nodeOk, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+				if not nodeOk then
+					return nil
+				end
+
 				local activeRank = type(nodeInfo) == "table" and (nodeInfo.activeRank or nodeInfo.currentRank or 0) or 0
 				local activeEntry = type(nodeInfo) == "table" and nodeInfo.activeEntry or nil
 				local activeEntryID = type(activeEntry) == "table" and activeEntry.entryID or activeEntry
 				if nodeOk and type(nodeInfo) == "table" and activeRank > 0 and activeEntryID and C_Traits.GetEntryInfo and C_Traits.GetDefinitionInfo then
 					local entryOk, entryInfo = pcall(C_Traits.GetEntryInfo, configID, activeEntryID)
+					if not entryOk then
+						return nil
+					end
+
 					if entryOk and type(entryInfo) == "table" and entryInfo.definitionID then
 						local definitionOk, definitionInfo = pcall(C_Traits.GetDefinitionInfo, entryInfo.definitionID)
+						if not definitionOk then
+							return nil
+						end
+
 						if definitionOk and type(definitionInfo) == "table" and definitionInfo.spellID == spellID then
 							return true
 						end
@@ -953,7 +981,7 @@ local function IsTalentSpellSelected(spellID)
 		end
 	end
 
-	return false
+	return scannedNodes and false or nil
 end
 
 local function RefreshDraconicAttunementsTalentState()
@@ -961,9 +989,16 @@ local function RefreshDraconicAttunementsTalentState()
 		return blackAttunementState.hasTalent
 	end
 
-	blackAttunementState.talentDirty = false
-	blackAttunementState.hasTalent = IsAugmentationEvoker()
-		and (IsKnownPlayerSpell(blackAttunementState.draconicAttunementsSpellID) or IsTalentSpellSelected(blackAttunementState.draconicAttunementsSpellID))
+	blackAttunementState.hasTalent = false
+	blackAttunementState.hasTalentSettled = not IsAugmentationEvoker()
+	if IsAugmentationEvoker() then
+		local hasKnownSpell = IsKnownPlayerSpell(blackAttunementState.draconicAttunementsSpellID)
+		local hasSelectedTalent = IsTalentSpellSelected(blackAttunementState.draconicAttunementsSpellID)
+		blackAttunementState.hasTalent = hasKnownSpell or hasSelectedTalent == true
+		blackAttunementState.hasTalentSettled = hasKnownSpell or hasSelectedTalent ~= nil
+	end
+
+	blackAttunementState.talentDirty = not blackAttunementState.hasTalentSettled
 
 	return blackAttunementState.hasTalent
 end
@@ -983,6 +1018,39 @@ end
 
 local function IsEbonMightTrackerEnabled()
 	return IsSettingEnabled("ebonMightTracker")
+end
+
+local function ShouldTrackEbonMight()
+	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
+		return false
+	end
+
+	return IsEbonMightTrackerEnabled() and IsAugmentationEvoker()
+end
+
+local function UpdateUnitEventRegistrations()
+	local shouldTrackGroupAuras = ShouldTrackEbonMight()
+	if eventState.groupAuras == shouldTrackGroupAuras then
+		return
+	end
+
+	eventState.groupAuras = shouldTrackGroupAuras
+	eventFrame:UnregisterEvent("UNIT_AURA")
+	if shouldTrackGroupAuras then
+		eventFrame:RegisterEvent("UNIT_AURA")
+	elseif eventFrame.RegisterUnitEvent then
+		eventFrame:RegisterUnitEvent("UNIT_AURA", "player")
+	else
+		eventFrame:RegisterEvent("UNIT_AURA")
+	end
+end
+
+local function RegisterPlayerUnitEvent(eventName)
+	if eventFrame.RegisterUnitEvent then
+		eventFrame:RegisterUnitEvent(eventName, "player")
+	else
+		eventFrame:RegisterEvent(eventName)
+	end
 end
 
 local function RefreshEbonMightCombatState()
@@ -1061,6 +1129,48 @@ local function IsChallengeModeActive()
 
 	local ok, isActive = pcall(C_ChallengeMode.IsChallengeModeActive)
 	return ok and isActive == true
+end
+
+function eventState.MarkInstanceContextDirty()
+	eventState.instanceContextDirty = true
+end
+
+function eventState.RefreshInstanceContext()
+	if not eventState.instanceContextDirty then
+		return
+	end
+
+	local inInstance, instanceType = false, nil
+	if IsInInstance then
+		local ok
+		ok, inInstance, instanceType = pcall(IsInInstance)
+		if not ok then
+			inInstance, instanceType = false, nil
+		end
+	end
+
+	local difficultyID
+	if GetInstanceInfo then
+		local infoOk
+		infoOk, _, _, difficultyID = pcall(GetInstanceInfo)
+		if not infoOk then
+			difficultyID = nil
+		end
+	end
+
+	eventState.instanceContextDirty = false
+	eventState.inInstance = inInstance == true
+	eventState.instanceType = instanceType
+	eventState.difficultyID = difficultyID
+	eventState.isChallengeMode = IsChallengeModeActive()
+	eventState.isDungeon = eventState.isChallengeMode or (eventState.inInstance and (eventState.instanceType == "party" or eventState.difficultyID == 8))
+	if eventState.isDungeon then
+		eventState.loadoutContext = LOADOUT_CONTEXT_MP
+	elseif eventState.inInstance and eventState.instanceType == "raid" then
+		eventState.loadoutContext = LOADOUT_CONTEXT_RAID
+	else
+		eventState.loadoutContext = nil
+	end
 end
 
 local function IsBloodlustAlertEnabled()
@@ -1252,47 +1362,14 @@ local function IsBloodlustLockoutAuraInfo(auraInfo)
 	return ok and isLockoutDebuff == true
 end
 
-local function GetInstanceContext()
-	local isChallengeModeActive = IsChallengeModeActive()
-	local inInstance, instanceType = false, nil
-	if IsInInstance then
-		local ok
-		ok, inInstance, instanceType = pcall(IsInInstance)
-		if not ok then
-			inInstance, instanceType = false, nil
-		end
-	end
-
-	local difficultyID
-	if GetInstanceInfo then
-		local infoOk
-		infoOk, _, _, difficultyID = pcall(GetInstanceInfo)
-		if not infoOk then
-			difficultyID = nil
-		end
-	end
-
-	return inInstance == true, instanceType, difficultyID, isChallengeModeActive
-end
-
 local function GetReadyAlertDungeonContext()
-	local inInstance, instanceType, difficultyID, isChallengeModeActive = GetInstanceContext()
-	if isChallengeModeActive then
-		return true, true
-	end
-
-	return inInstance and (instanceType == "party" or difficultyID == 8), false
+	eventState.RefreshInstanceContext()
+	return eventState.isDungeon, eventState.isChallengeMode
 end
 
 local function GetLoadoutContext()
-	local inInstance, instanceType, difficultyID, isChallengeModeActive = GetInstanceContext()
-	if isChallengeModeActive or (inInstance and (instanceType == "party" or difficultyID == 8)) then
-		return LOADOUT_CONTEXT_MP
-	end
-
-	if inInstance and instanceType == "raid" then
-		return LOADOUT_CONTEXT_RAID
-	end
+	eventState.RefreshInstanceContext()
+	return eventState.loadoutContext
 end
 
 local function RefreshBloodlustInstanceState()
@@ -1326,7 +1403,7 @@ local function ShouldShowBloodlustAlert()
 end
 
 local function UpdateBloodlustAlert()
-	SetBloodlustAlertShown(ShouldShowBloodlustAlert())
+	alertFrames.SetBloodlustAlertShown(ShouldShowBloodlustAlert())
 end
 
 local RefreshPotionState
@@ -1397,42 +1474,45 @@ end
 
 RefreshPotionState = function()
 	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
-		SetPotionAlertShown(false)
-		return
+		alertFrames.SetPotionAlertShown(false)
+		return false, false
 	end
 
 	if not IsPotionAlertEnabled() then
-		SetPotionAlertShown(false)
-		return
+		alertFrames.SetPotionAlertShown(false)
+		return false, false
 	end
 
 	RefreshBloodlustInstanceState()
 	if not bloodlustState.isDungeon then
-		SetPotionAlertShown(false)
-		return
+		alertFrames.SetPotionAlertShown(false)
+		return false, true
 	end
 
-	RefreshPlayerDamageRole()
 	if not isPlayerDamageRole then
-		SetPotionAlertShown(false)
-		return
+		alertFrames.SetPotionAlertShown(false)
+		return false, false
 	end
 
 	local hasReadyPotion, isDataPending = HasReadyCombatPotion()
 	if hasReadyPotion then
-		SetPotionAlertShown(true)
+		alertFrames.SetPotionAlertShown(true)
+		return false, false
 	elseif isDataPending then
-		return
+		return true, true
 	else
-		SetPotionAlertShown(false)
+		alertFrames.SetPotionAlertShown(false)
+		return false, false
 	end
 end
 
 module.RefreshPotionState = RefreshPotionState
 
 local function RefreshPotionStateSoon()
-	RefreshPotionState()
-	ScheduleRefreshSequence("potion", POTION_REFRESH_DELAYS, RefreshPotionState)
+	local shouldRetry, canRetry = RefreshPotionState()
+	if shouldRetry or canRetry then
+		ScheduleRefreshSequence("potion", POTION_REFRESH_DELAYS, RefreshPotionState)
+	end
 end
 
 local function IsEbonMightAuraInfo(auraInfo)
@@ -1561,6 +1641,10 @@ local function IsGroupUnitID(unitID)
 end
 
 local function DidEbonMightChange(unitID, updateInfo)
+	if not ShouldTrackEbonMight() then
+		return false
+	end
+
 	if not IsGroupUnitID(unitID) then
 		return false
 	end
@@ -1596,7 +1680,7 @@ RefreshEbonMightTracker = function()
 		return
 	end
 
-	if not IsEbonMightTrackerEnabled() or not IsAugmentationEvoker() then
+	if not ShouldTrackEbonMight() then
 		SetEbonMightCursorShown(false)
 		return
 	end
@@ -1681,17 +1765,17 @@ local function RefreshBlackAttunementState()
 	blackAttunementState.auraFallback = false
 
 	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
-		SetBlackAttunementAlertShown(false)
+		alertFrames.SetBlackAttunementAlertShown(false)
 		return
 	end
 
 	if not IsBlackAttunementAlertEnabled() or not IsAugmentationEvoker() then
-		SetBlackAttunementAlertShown(false)
+		alertFrames.SetBlackAttunementAlertShown(false)
 		return
 	end
 
 	if not RefreshDraconicAttunementsTalentState() then
-		SetBlackAttunementAlertShown(false)
+		alertFrames.SetBlackAttunementAlertShown(false)
 		return
 	end
 
@@ -1699,19 +1783,21 @@ local function RefreshBlackAttunementState()
 	if hasAura then
 		blackAttunementState.auraInstanceID = auraInstanceID
 		blackAttunementState.auraFallback = auraInstanceID == nil
-		SetBlackAttunementAlertShown(false)
+		alertFrames.SetBlackAttunementAlertShown(false)
 		return
 	end
 
 	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.BLACK_ATTUNEMENT_MISSING
-	SetBlackAttunementAlertShown(true, (alertSettings and alertSettings.message) or "BLACK ATTUNEMENT MISSING")
+	alertFrames.SetBlackAttunementAlertShown(true, (alertSettings and alertSettings.message) or "BLACK ATTUNEMENT MISSING")
 end
 
 module.RefreshBlackAttunementState = RefreshBlackAttunementState
 
 local function RefreshBlackAttunementStateSoon()
 	RefreshBlackAttunementState()
-	ScheduleRefreshSequence("blackAttunement", LOADOUT_REFRESH_DELAYS, RefreshBlackAttunementState)
+	if IsBlackAttunementAlertEnabled() and IsAugmentationEvoker() and (blackAttunementState.hasTalent or not blackAttunementState.hasTalentSettled) then
+		ScheduleRefreshSequence("blackAttunement", LOADOUT_REFRESH_DELAYS, RefreshBlackAttunementState)
+	end
 end
 
 local function DidBlackAttunementChange(unitID, updateInfo)
@@ -1928,7 +2014,7 @@ local function GetTalentLoadoutState(context)
 	return hasContextPreset, not hasContextPreset
 end
 
-local function GetLoadoutDebugState()
+function debugState.GetLoadoutDebugState()
 	local context = GetLoadoutContext()
 	local hasEquipmentPreset, isEquipmentCorrect = false, true
 	local hasTalentPreset, isTalentCorrect = false, true
@@ -1977,19 +2063,19 @@ end
 
 local function RefreshLoadoutMismatchState()
 	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
-		SetLoadoutMismatchAlertShown(false)
-		return
+		alertFrames.SetLoadoutMismatchAlertShown(false)
+		return false
 	end
 
 	if not IsLoadoutMismatchAlertEnabled() then
-		SetLoadoutMismatchAlertShown(false)
-		return
+		alertFrames.SetLoadoutMismatchAlertShown(false)
+		return false
 	end
 
 	local context = GetLoadoutContext()
 	if not context then
-		SetLoadoutMismatchAlertShown(false)
-		return
+		alertFrames.SetLoadoutMismatchAlertShown(false)
+		return false
 	end
 
 	local mismatches = {}
@@ -2004,8 +2090,8 @@ local function RefreshLoadoutMismatchState()
 	end
 
 	if #mismatches == 0 then
-		SetLoadoutMismatchAlertShown(false)
-		return
+		alertFrames.SetLoadoutMismatchAlertShown(false)
+		return true
 	end
 
 	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOADOUT_MISMATCH
@@ -2016,12 +2102,14 @@ local function RefreshLoadoutMismatchState()
 			mismatch = table_concat(mismatches, " + "),
 		}
 	)
-	SetLoadoutMismatchAlertShown(true, message)
+	alertFrames.SetLoadoutMismatchAlertShown(true, message)
+	return true
 end
 
 local function RefreshLoadoutMismatchStateSoon()
-	RefreshLoadoutMismatchState()
-	ScheduleRefreshSequence("loadout", LOADOUT_REFRESH_DELAYS, RefreshLoadoutMismatchState)
+	if RefreshLoadoutMismatchState() and not (eventState.isChallengeMode and UnitAffectingCombat and UnitAffectingCombat("player") == true) then
+		ScheduleRefreshSequence("loadout", LOADOUT_REFRESH_DELAYS, RefreshLoadoutMismatchState)
+	end
 end
 
 module.RefreshLoadoutMismatchState = RefreshLoadoutMismatchState
@@ -2032,7 +2120,7 @@ local function RefreshBloodlustState()
 		bloodlustState.currentSpellID = nil
 		bloodlustState.hasLockoutDebuff = false
 		bloodlustState.isChallengeMode = false
-		SetBloodlustAlertShown(false)
+		alertFrames.SetBloodlustAlertShown(false)
 		return
 	end
 
@@ -2048,6 +2136,7 @@ end
 
 module.RefreshBloodlustState = RefreshBloodlustState
 module.RefreshReadyAlertStates = function()
+	UpdateUnitEventRegistrations()
 	RefreshBloodlustState()
 	RefreshPotionState()
 	RefreshLoadoutMismatchState()
@@ -2057,7 +2146,7 @@ end
 
 local function RefreshBloodlustStateSoon()
 	RefreshBloodlustState()
-	if C_Timer and C_Timer.After then
+	if C_Timer and C_Timer.After and IsBloodlustAlertEnabled() and CanPlayerClassProvideBloodlust() then
 		C_Timer.After(0.25, RefreshBloodlustState)
 		C_Timer.After(1, RefreshBloodlustState)
 	end
@@ -2080,6 +2169,8 @@ end
 local function RefreshPlayerState()
 	playerClass = select(2, UnitClass("player"))
 	MarkDraconicAttunementsTalentDirty()
+	UpdateUnitEventRegistrations()
+	RefreshPlayerDamageRole()
 	lowResourceState.healthActive = false
 	lowResourceState.manaActive = false
 	ShowLowHealth()
@@ -2087,7 +2178,7 @@ local function RefreshPlayerState()
 	module.RefreshReadyAlertStates()
 end
 
-local function GetBloodlustDebugState()
+function debugState.GetBloodlustDebugState()
 	RefreshBloodlustInstanceState()
 	ResolveBloodlustSpell(true)
 	if bloodlustState.isDungeon and bloodlustState.currentSpellID then
@@ -2129,7 +2220,7 @@ local function GetBloodlustDebugState()
 	)
 end
 
-local function GetPotionDebugState()
+function debugState.GetPotionDebugState()
 	RefreshBloodlustInstanceState()
 	RefreshPlayerDamageRole()
 
@@ -2155,7 +2246,7 @@ local function GetPotionDebugState()
 	)
 end
 
-local function GetSoundChannelDebugState()
+function debugState.GetSoundChannelDebugState()
 	local numericValue, rawValue = ReadSoundNumChannels()
 	return string_format(
 		"SOUND state: enabled=%s modDisabled=%s cvar=%s raw=%s target=%s changed=%s",
@@ -2168,7 +2259,7 @@ local function GetSoundChannelDebugState()
 	)
 end
 
-local function GetEbonMightDebugState()
+function debugState.GetEbonMightDebugState()
 	local found, minExpirationTime = ScanEbonMightState()
 	return string_format(
 		"EBON state: enabled=%s aug=%s found=%s remaining=%s shown=%s",
@@ -2180,7 +2271,7 @@ local function GetEbonMightDebugState()
 	)
 end
 
-local function GetBlackAttunementDebugState()
+function debugState.GetBlackAttunementDebugState()
 	local hasTalent = RefreshDraconicAttunementsTalentState()
 	local hasStance = false
 	local hasAura = false
@@ -2200,6 +2291,7 @@ local function GetBlackAttunementDebugState()
 end
 
 function eventFrame:PLAYER_LOGIN()
+	eventState.MarkInstanceContextDirty()
 	RefreshEbonMightCombatState()
 	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
@@ -2207,6 +2299,7 @@ function eventFrame:PLAYER_LOGIN()
 end
 
 function eventFrame:PLAYER_ENTERING_WORLD()
+	eventState.MarkInstanceContextDirty()
 	RefreshEbonMightCombatState()
 	EnforceSoundChannelCapSoon()
 	RefreshPlayerState()
@@ -2258,18 +2351,27 @@ function eventFrame:SPELLS_CHANGED()
 end
 
 function eventFrame:UPDATE_INSTANCE_INFO()
+	eventState.MarkInstanceContextDirty()
 	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:PLAYER_DIFFICULTY_CHANGED()
+	eventState.MarkInstanceContextDirty()
 	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:CHALLENGE_MODE_START()
+	eventState.MarkInstanceContextDirty()
 	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:CHALLENGE_MODE_RESET()
+	eventState.MarkInstanceContextDirty()
+	RefreshReadyAlertStatesSoon()
+end
+
+function eventFrame:CHALLENGE_MODE_COMPLETED()
+	eventState.MarkInstanceContextDirty()
 	RefreshReadyAlertStatesSoon()
 end
 
@@ -2281,17 +2383,24 @@ function eventFrame:UNIT_PET(unitID)
 end
 
 function eventFrame:PLAYER_ROLES_ASSIGNED()
+	RefreshPlayerDamageRole()
 	RefreshPotionStateSoon()
 end
 
 function eventFrame:PLAYER_REGEN_DISABLED()
 	ebonMightState.playerInCombat = true
-	ScheduleEbonMightRefresh(EBON_MIGHT_COMBAT_ENTRY_DELAY)
+	if ShouldTrackEbonMight() then
+		ScheduleEbonMightRefresh(EBON_MIGHT_COMBAT_ENTRY_DELAY)
+	end
 end
 
 function eventFrame:PLAYER_REGEN_ENABLED()
 	ebonMightState.playerInCombat = false
-	RefreshEbonMightTracker()
+	if ShouldTrackEbonMight() then
+		RefreshEbonMightTracker()
+	else
+		SetEbonMightCursorShown(false)
+	end
 end
 
 function eventFrame:BAG_UPDATE_DELAYED()
@@ -2410,6 +2519,7 @@ eventFrame:RegisterEvent("UPDATE_INSTANCE_INFO")
 eventFrame:RegisterEvent("PLAYER_DIFFICULTY_CHANGED")
 eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 eventFrame:RegisterEvent("UNIT_PET")
 eventFrame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -2417,39 +2527,39 @@ eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-eventFrame:RegisterEvent("UNIT_HEALTH")
-eventFrame:RegisterEvent("UNIT_MAXHEALTH")
-eventFrame:RegisterEvent("UNIT_POWER_UPDATE")
-eventFrame:RegisterEvent("UNIT_MAXPOWER")
-eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
-eventFrame:RegisterEvent("UNIT_AURA")
+RegisterPlayerUnitEvent("UNIT_HEALTH")
+RegisterPlayerUnitEvent("UNIT_MAXHEALTH")
+RegisterPlayerUnitEvent("UNIT_POWER_UPDATE")
+RegisterPlayerUnitEvent("UNIT_MAXPOWER")
+RegisterPlayerUnitEvent("UNIT_DISPLAYPOWER")
+UpdateUnitEventRegistrations()
 
 SLASH_DORQ1 = DorqUtilities.COMMAND
 SlashCmdList.DORQ = function(input)
 	input = string_lower(input or "")
 	if input == "bl" then
 		RefreshBloodlustState()
-		Print(GetBloodlustDebugState())
+		Print(debugState.GetBloodlustDebugState())
 		return
 	elseif input == "pot" then
 		RefreshPotionState()
-		Print(GetPotionDebugState())
+		Print(debugState.GetPotionDebugState())
 		return
 	elseif input == "loadout" then
 		RefreshLoadoutMismatchState()
-		Print(GetLoadoutDebugState())
+		Print(debugState.GetLoadoutDebugState())
 		return
 	elseif input == "sound" then
 		EnforceSoundChannelCapSoon()
-		Print(GetSoundChannelDebugState())
+		Print(debugState.GetSoundChannelDebugState())
 		return
 	elseif input == "ebon" then
 		RefreshEbonMightTracker()
-		Print(GetEbonMightDebugState())
+		Print(debugState.GetEbonMightDebugState())
 		return
 	elseif input == "black" or input == "attunement" then
 		RefreshBlackAttunementState()
-		Print(GetBlackAttunementDebugState())
+		Print(debugState.GetBlackAttunementDebugState())
 		return
 	end
 
