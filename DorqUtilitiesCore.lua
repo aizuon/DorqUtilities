@@ -59,7 +59,7 @@ local LOADOUT_CONTEXT_LABELS = {
 	raid = "Raid",
 }
 local LOADOUT_REFRESH_DELAYS = { 0.1, 0.35, 0.8, 1.5 }
-local POTION_REFRESH_DELAYS = { 0.5, 2, 4, 8 }
+local POTION_REFRESH_DELAYS = { 0.5, 2, 4, 8, 15, 30 }
 local SOUND_NUM_CHANNELS_CVAR = "Sound_NumChannels"
 local SOUND_NUM_CHANNELS_TARGET = 96
 local SOUND_CHANNEL_REPAIR_DELAYS = { 0.05, 0.25, 0.75, 1.25, 2.5 }
@@ -113,6 +113,11 @@ local combatPotionItemIDs = {
 	241293, -- Draught of Rampant Abandon
 	241292, -- Draught of Rampant Abandon
 }
+
+local combatPotionItemIDSet = {}
+for _, itemID in ipairs(combatPotionItemIDs) do
+	combatPotionItemIDSet[itemID] = true
+end
 
 local bloodlustLockoutDebuffs = {
 	57723, -- Exhaustion
@@ -1038,6 +1043,12 @@ end
 
 local RefreshPotionState
 
+local function RequestCombatPotionData(itemID)
+	if C_Item and C_Item.RequestLoadItemDataByID then
+		pcall(C_Item.RequestLoadItemDataByID, itemID)
+	end
+end
+
 local function SchedulePotionCooldownCheck(readyAt)
 	if not readyAt or not C_Timer or not C_Timer.After then
 		return
@@ -1060,35 +1071,40 @@ end
 
 local function IsCombatPotionReady(itemID)
 	if GetCombatPotionCount(itemID) <= 0 then
-		return false
+		return false, false
 	end
 
 	local startTime, duration, enabled = TryGetCombatPotionCooldown(itemID)
 	if duration == nil then
-		return false
+		RequestCombatPotionData(itemID)
+		return false, true
 	end
 
 	if enabled == false or enabled == 0 then
-		return false
+		return false, false
 	end
 
 	local readyAt = (startTime or 0) + (duration or 0)
 	if duration > GCD_THRESHOLD and readyAt > GetTime() then
 		SchedulePotionCooldownCheck(readyAt)
-		return false
+		return false, false
 	end
 
-	return true
+	return true, false
 end
 
 local function HasReadyCombatPotion()
+	local isDataPending = false
 	for _, itemID in ipairs(combatPotionItemIDs) do
-		if IsCombatPotionReady(itemID) then
+		local isReady, isPending = IsCombatPotionReady(itemID)
+		if isReady then
 			return true
 		end
+
+		isDataPending = isDataPending or isPending
 	end
 
-	return false
+	return false, isDataPending
 end
 
 RefreshPotionState = function()
@@ -1114,12 +1130,20 @@ RefreshPotionState = function()
 		return
 	end
 
-	SetPotionAlertShown(HasReadyCombatPotion())
+	local hasReadyPotion, isDataPending = HasReadyCombatPotion()
+	if hasReadyPotion then
+		SetPotionAlertShown(true)
+	elseif isDataPending then
+		return
+	else
+		SetPotionAlertShown(false)
+	end
 end
 
 module.RefreshPotionState = RefreshPotionState
 
-local function SchedulePotionStateRefreshes()
+local function RefreshPotionStateSoon()
+	RefreshPotionState()
 	if not C_Timer or not C_Timer.After then
 		return
 	end
@@ -1699,12 +1723,10 @@ local function RefreshBloodlustStateSoon()
 end
 
 local function RefreshReadyAlertStatesSoon()
-	module.RefreshReadyAlertStates()
-	SchedulePotionStateRefreshes()
-	if C_Timer and C_Timer.After then
-		C_Timer.After(0.25, module.RefreshReadyAlertStates)
-		C_Timer.After(1, module.RefreshReadyAlertStates)
-	end
+	RefreshBloodlustStateSoon()
+	RefreshPotionStateSoon()
+	RefreshLoadoutMismatchStateSoon()
+	RefreshEbonMightTracker()
 end
 
 local function RefreshPlayerState()
@@ -1769,16 +1791,18 @@ local function GetPotionDebugState()
 			break
 		end
 	end
+	local hasReadyPotion, isDataPending = HasReadyCombatPotion()
 
 	return string_format(
-		"POT state: enabled=%s modDisabled=%s dungeon=%s dps=%s hasPotion=%s shown=%s ready=%s",
+		"POT state: enabled=%s modDisabled=%s dungeon=%s dps=%s hasPotion=%s shown=%s ready=%s dataPending=%s",
 		tostring(IsPotionAlertEnabled()),
 		tostring(Profiles.IsModDisabled and Profiles.IsModDisabled()),
 		tostring(isBloodlustDungeon),
 		tostring(isPlayerDamageRole),
 		tostring(hasPotion),
 		tostring(potionAlertFrame and potionAlertFrame:IsShown()),
-		tostring(HasReadyCombatPotion())
+		tostring(hasReadyPotion),
+		tostring(isDataPending)
 	)
 end
 
@@ -1890,7 +1914,7 @@ function eventFrame:UNIT_PET(unitID)
 end
 
 function eventFrame:PLAYER_ROLES_ASSIGNED()
-	RefreshPotionState()
+	RefreshPotionStateSoon()
 end
 
 function eventFrame:PLAYER_REGEN_DISABLED()
@@ -1909,6 +1933,12 @@ end
 
 function eventFrame:BAG_UPDATE_COOLDOWN()
 	RefreshPotionState()
+end
+
+function eventFrame:GET_ITEM_INFO_RECEIVED(itemID, success)
+	if success ~= false and combatPotionItemIDSet[itemID] then
+		RefreshPotionState()
+	end
 end
 
 function eventFrame:UNIT_HEALTH(unitID)
@@ -2015,6 +2045,7 @@ eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
+eventFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 eventFrame:RegisterEvent("UNIT_HEALTH")
 eventFrame:RegisterEvent("UNIT_MAXHEALTH")
 eventFrame:RegisterEvent("UNIT_POWER_UPDATE")
