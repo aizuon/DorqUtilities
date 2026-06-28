@@ -72,7 +72,7 @@ overrides other addons that raise or lower the value.
 Open the DorqUtilities settings panel with:
 
 ```text
-/dorqutilities
+/dorq
 ```
 
 The settings panel lets you enable or disable:
@@ -91,12 +91,11 @@ It also includes a `Reset Toggles` button to restore the default feature states.
 ## Debug Commands
 
 ```text
-/dorqutilities bl
-/dorqutilities pot
-/dorqutilities loadout
-/dorqutilities sound
-/dorqutilities ebon
-/dorqutilities bltest
+/dorq bl
+/dorq pot
+/dorq loadout
+/dorq sound
+/dorq ebon
 ```
 
 ## Supported Game Version

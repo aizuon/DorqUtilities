@@ -135,7 +135,7 @@ local function BuildSettingsPanel(panel)
 		Print("DorqUtilities major feature toggles were reset to their defaults.")
 	end)
 
-	local slashHint = CreateWrappedText(content, "GameFontDisableSmall", contentWidth - 200, "Use /dorqutilities to jump to this settings page.", leftPadding + 156, currentY - 4)
+	local slashHint = CreateWrappedText(content, "GameFontDisableSmall", contentWidth - 200, "Use /dorq to jump to this settings page.", leftPadding + 156, currentY - 4)
 	currentY = currentY - math.max(24, slashHint:GetStringHeight()) - 20
 
 	content:SetHeight(-currentY + 24)

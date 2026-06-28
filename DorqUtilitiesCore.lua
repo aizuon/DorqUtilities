@@ -62,6 +62,7 @@ local LOADOUT_CONTEXT_LABELS = {
 	raid = "Raid",
 }
 local LOADOUT_REFRESH_DELAYS = { 0.1, 0.35, 0.8, 1.5 }
+local POTION_REFRESH_DELAYS = { 0.5, 2, 4, 8 }
 local SOUND_NUM_CHANNELS_CVAR = "Sound_NumChannels"
 local SOUND_NUM_CHANNELS_TARGET = 96
 local SOUND_CHANNEL_REPAIR_DELAYS = { 0.05, 0.25, 0.75, 1.25, 2.5 }
@@ -160,6 +161,7 @@ local potionAlertShown
 local loadoutMismatchAlertFrame
 local loadoutMismatchAlertShown
 local loadoutRefreshSequence = 0
+local potionRefreshSequence = 0
 local soundChannelRepairSequence = 0
 local ebonMightCursorFrame
 local ebonMightCursorShown = false
@@ -924,18 +926,15 @@ local function IsBloodlustLockoutAuraInfo(auraInfo)
 	return ok and isLockoutDebuff == true
 end
 
-local function GetReadyAlertDungeonContext()
-	if IsChallengeModeActive() then
-		return true, true
-	end
-
-	if not IsInInstance then
-		return false, false
-	end
-
-	local ok, inInstance, instanceType = pcall(IsInInstance)
-	if not ok then
-		return false, false
+local function GetInstanceContext()
+	local isChallengeModeActive = IsChallengeModeActive()
+	local inInstance, instanceType = false, nil
+	if IsInInstance then
+		local ok
+		ok, inInstance, instanceType = pcall(IsInInstance)
+		if not ok then
+			inInstance, instanceType = false, nil
+		end
 	end
 
 	local difficultyID
@@ -947,20 +946,25 @@ local function GetReadyAlertDungeonContext()
 		end
 	end
 
-	return inInstance == true and (instanceType == "party" or difficultyID == 8), false
+	return inInstance == true, instanceType, difficultyID, isChallengeModeActive
+end
+
+local function GetReadyAlertDungeonContext()
+	local inInstance, instanceType, difficultyID, isChallengeModeActive = GetInstanceContext()
+	if isChallengeModeActive then
+		return true, true
+	end
+
+	return inInstance and (instanceType == "party" or difficultyID == 8), false
 end
 
 local function GetLoadoutContext()
-	if IsChallengeModeActive() then
+	local inInstance, instanceType, difficultyID, isChallengeModeActive = GetInstanceContext()
+	if isChallengeModeActive or (inInstance and (instanceType == "party" or difficultyID == 8)) then
 		return LOADOUT_CONTEXT_MP
 	end
 
-	if not IsInInstance then
-		return
-	end
-
-	local ok, inInstance, instanceType = pcall(IsInInstance)
-	if ok and inInstance == true and instanceType == "raid" then
+	if inInstance and instanceType == "raid" then
 		return LOADOUT_CONTEXT_RAID
 	end
 end
@@ -1081,6 +1085,24 @@ RefreshPotionState = function()
 end
 
 module.RefreshPotionState = RefreshPotionState
+
+local function SchedulePotionStateRefreshes()
+	if not C_Timer or not C_Timer.After then
+		return
+	end
+
+	potionRefreshSequence = potionRefreshSequence + 1
+	local sequence = potionRefreshSequence
+	for _, delay in ipairs(POTION_REFRESH_DELAYS) do
+		C_Timer.After(delay, function()
+			if sequence ~= potionRefreshSequence then
+				return
+			end
+
+			RefreshPotionState()
+		end)
+	end
+end
 
 local function IsEbonMightAuraInfo(auraInfo)
 	if not auraInfo then
@@ -1645,6 +1667,7 @@ end
 
 local function RefreshReadyAlertStatesSoon()
 	module.RefreshReadyAlertStates()
+	SchedulePotionStateRefreshes()
 	if C_Timer and C_Timer.After then
 		C_Timer.After(0.25, module.RefreshReadyAlertStates)
 		C_Timer.After(1, module.RefreshReadyAlertStates)
@@ -1969,8 +1992,8 @@ eventFrame:RegisterEvent("UNIT_MAXPOWER")
 eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
 eventFrame:RegisterEvent("UNIT_AURA")
 
-SLASH_DORQUTILITIES1 = DorqUtilities.COMMAND
-SlashCmdList.DORQUTILITIES = function(input)
+SLASH_DORQ1 = DorqUtilities.COMMAND
+SlashCmdList.DORQ = function(input)
 	input = string_lower(input or "")
 	if input == "bl" then
 		RefreshBloodlustState()
@@ -1991,13 +2014,6 @@ SlashCmdList.DORQUTILITIES = function(input)
 	elseif input == "ebon" then
 		RefreshEbonMightTracker()
 		Print(GetEbonMightDebugState())
-		return
-	elseif input == "bltest" then
-		SetBloodlustAlertShown(true)
-		Print("Showing BL READY test frame for 5 seconds.")
-		if C_Timer and C_Timer.After then
-			C_Timer.After(5, RefreshBloodlustState)
-		end
 		return
 	end
 
