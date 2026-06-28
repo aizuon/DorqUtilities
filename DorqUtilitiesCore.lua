@@ -198,6 +198,7 @@ local refreshSequences = {
 	potion = 0,
 	sound = 0,
 	ebonMight = 0,
+	blackAttunement = 0,
 }
 local ebonMightState = {
 	cursorFrame = nil,
@@ -211,7 +212,6 @@ local isPlayerDamageRole = false
 local blackAttunementState = {
 	alertFrame = nil,
 	alertShown = false,
-	refreshSequence = 0,
 	hasTalent = false,
 	talentDirty = true,
 	auraInstanceID = nil,
@@ -338,6 +338,24 @@ local function FindTrackedUnitAura(unitID, auraDefinition, filter, allowAuraUtil
 	end
 
 	return false
+end
+
+local function ScheduleRefreshSequence(sequenceKey, delays, callback)
+	if not C_Timer or not C_Timer.After then
+		return
+	end
+
+	refreshSequences[sequenceKey] = (refreshSequences[sequenceKey] or 0) + 1
+	local sequence = refreshSequences[sequenceKey]
+	for _, delay in ipairs(delays) do
+		C_Timer.After(delay, function()
+			if sequence ~= refreshSequences[sequenceKey] then
+				return
+			end
+
+			callback()
+		end)
+	end
 end
 
 local function EnsureBloodlustAlertFrame()
@@ -1107,21 +1125,7 @@ end
 
 local function EnforceSoundChannelCapSoon()
 	EnforceSoundChannelCap()
-	if not C_Timer or not C_Timer.After then
-		return
-	end
-
-	refreshSequences.sound = refreshSequences.sound + 1
-	local sequence = refreshSequences.sound
-	for _, delay in ipairs(SOUND_CHANNEL_REPAIR_DELAYS) do
-		C_Timer.After(delay, function()
-			if sequence ~= refreshSequences.sound then
-				return
-			end
-
-			EnforceSoundChannelCap()
-		end)
-	end
+	ScheduleRefreshSequence("sound", SOUND_CHANNEL_REPAIR_DELAYS, EnforceSoundChannelCap)
 end
 
 module.RefreshSoundChannelCap = EnforceSoundChannelCapSoon
@@ -1417,21 +1421,7 @@ module.RefreshPotionState = RefreshPotionState
 
 local function RefreshPotionStateSoon()
 	RefreshPotionState()
-	if not C_Timer or not C_Timer.After then
-		return
-	end
-
-	refreshSequences.potion = refreshSequences.potion + 1
-	local sequence = refreshSequences.potion
-	for _, delay in ipairs(POTION_REFRESH_DELAYS) do
-		C_Timer.After(delay, function()
-			if sequence ~= refreshSequences.potion then
-				return
-			end
-
-			RefreshPotionState()
-		end)
-	end
+	ScheduleRefreshSequence("potion", POTION_REFRESH_DELAYS, RefreshPotionState)
 end
 
 local function IsEbonMightAuraInfo(auraInfo)
@@ -1668,21 +1658,7 @@ module.RefreshBlackAttunementState = RefreshBlackAttunementState
 
 local function RefreshBlackAttunementStateSoon()
 	RefreshBlackAttunementState()
-	if not C_Timer or not C_Timer.After then
-		return
-	end
-
-	blackAttunementState.refreshSequence = blackAttunementState.refreshSequence + 1
-	local sequence = blackAttunementState.refreshSequence
-	for _, delay in ipairs(LOADOUT_REFRESH_DELAYS) do
-		C_Timer.After(delay, function()
-			if sequence ~= blackAttunementState.refreshSequence then
-				return
-			end
-
-			RefreshBlackAttunementState()
-		end)
-	end
+	ScheduleRefreshSequence("blackAttunement", LOADOUT_REFRESH_DELAYS, RefreshBlackAttunementState)
 end
 
 local function DidBlackAttunementChange(unitID, updateInfo)
@@ -1992,21 +1968,7 @@ end
 
 local function RefreshLoadoutMismatchStateSoon()
 	RefreshLoadoutMismatchState()
-	if not C_Timer or not C_Timer.After then
-		return
-	end
-
-	refreshSequences.loadout = refreshSequences.loadout + 1
-	local sequence = refreshSequences.loadout
-	for _, delay in ipairs(LOADOUT_REFRESH_DELAYS) do
-		C_Timer.After(delay, function()
-			if sequence ~= refreshSequences.loadout then
-				return
-			end
-
-			RefreshLoadoutMismatchState()
-		end)
-	end
+	ScheduleRefreshSequence("loadout", LOADOUT_REFRESH_DELAYS, RefreshLoadoutMismatchState)
 end
 
 module.RefreshLoadoutMismatchState = RefreshLoadoutMismatchState

@@ -14,6 +14,15 @@ local function RefreshCheckButtons()
 	end
 end
 
+local function RefreshRuntimeState()
+	if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
+		DorqUtilities.Core.RefreshReadyAlertStates()
+	end
+	if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
+		DorqUtilities.Core.RefreshSoundChannelCap()
+	end
+end
+
 local function CreateWrappedText(parent, template, width, text, xOffset, yOffset)
 	local label = parent:CreateFontString(nil, "ARTWORK", template)
 	label:SetWidth(width)
@@ -53,15 +62,7 @@ local function CreateFeatureRow(parent, feature, xOffset, yOffset, rowWidth)
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	button:SetScript("OnClick", function(self)
 		Profiles.SetFeatureEnabled(feature, self:GetChecked())
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
-			DorqUtilities.Core.RefreshReadyAlertStates()
-		end
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
-			DorqUtilities.Core.RefreshSoundChannelCap()
-		end
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshEbonMightTracker then
-			DorqUtilities.Core.RefreshEbonMightTracker()
-		end
+		RefreshRuntimeState()
 		RefreshCheckButtons()
 	end)
 
@@ -122,15 +123,7 @@ local function BuildSettingsPanel(panel)
 	resetButton:SetText("Reset Toggles")
 	resetButton:SetScript("OnClick", function()
 		Profiles.ResetFeatureToggles()
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
-			DorqUtilities.Core.RefreshReadyAlertStates()
-		end
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
-			DorqUtilities.Core.RefreshSoundChannelCap()
-		end
-		if DorqUtilities.Core and DorqUtilities.Core.RefreshEbonMightTracker then
-			DorqUtilities.Core.RefreshEbonMightTracker()
-		end
+		RefreshRuntimeState()
 		RefreshCheckButtons()
 		Print("DorqUtilities major feature toggles were reset to their defaults.")
 	end)
