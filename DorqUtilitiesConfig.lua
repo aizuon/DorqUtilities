@@ -46,6 +46,10 @@ local masterProfile = {
 			message = "CHECK %c LOADOUT: %m",
 			fontSize = 24,
 		},
+		BLACK_ATTUNEMENT_MISSING = {
+			message = "BLACK ATTUNEMENT MISSING",
+			fontSize = 24,
+		},
 	},
 }
 
@@ -88,6 +92,12 @@ local featureGroups = {
 				tooltip = "Shows a static warning near the top of the screen when your active equipment set or talent loadout does not match available presets containing mp or raid.",
 				displayNote = "Static top-screen alert.",
 				alerts = { "LOADOUT_MISMATCH" },
+			},
+			{
+				label = "Black Attunement warning",
+				tooltip = "Shows a static warning for Augmentation Evokers with Draconic Attunements talented when Black Attunement is not active.",
+				displayNote = "Static top-screen alert.",
+				alerts = { "BLACK_ATTUNEMENT_MISSING" },
 			},
 			{
 				label = "Ebon Might tracker",

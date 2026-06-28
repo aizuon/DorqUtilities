@@ -44,6 +44,14 @@ The warning only activates when you have relevant presets:
 For example, if you are in a raid and have a talent loadout named
 `raid no interrupt`, the alert expects that saved raid loadout to be selected.
 
+### Black Attunement Warning
+
+Augmentation Evokers with Draconic Attunements talented can show a static
+top-screen warning when Black Attunement is not active.
+
+The aura check is skipped unless you are currently Augmentation and the talent is
+selected.
+
 ### Ebon Might Tracker
 
 Augmentation Evokers can show a cursor-following Ebon Might reminder. The icon
@@ -81,6 +89,7 @@ The settings panel lets you enable or disable:
 - Bloodlust ready alert
 - Combat potion ready alert
 - M+ / raid loadout warning
+- Black Attunement warning
 - Ebon Might tracker
 - Warcraft Logs context menu
 - Sound channel override
@@ -95,6 +104,7 @@ It also includes a `Reset Toggles` button to restore the default feature states.
 /dorq loadout
 /dorq sound
 /dorq ebon
+/dorq black
 ```
 
 ## Supported Game Version
