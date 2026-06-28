@@ -64,10 +64,6 @@ local SOUND_NUM_CHANNELS_CVAR = "Sound_NumChannels"
 local SOUND_NUM_CHANNELS_TARGET = 96
 local SOUND_CHANNEL_REPAIR_DELAYS = { 0.05, 0.25, 0.75, 1.25, 2.5 }
 local AUGMENTATION_SPEC_ID = 1473
-local EBON_MIGHT_AURA_IDS = {
-	[395152] = true,
-	[395296] = true,
-}
 -- Ebon Might's pandemic window is 3s; warn at 4s to account for its cast time.
 local EBON_MIGHT_PANDEMIC_THRESHOLD = 4
 local EBON_MIGHT_CURSOR_SCALE = 0.9
@@ -78,6 +74,27 @@ local EBON_MIGHT_COMBAT_ENTRY_DELAY = 0.1
 local EXTERNAL_EBON_CURSOR_CONFIG = "Lifebloom" .. "AlertDB"
 local GCD_THRESHOLD = 1.5
 local MAX_AURA_SCAN_COUNT = 80
+
+local auraDefinitions = {
+	ebonMight = {
+		spellIDs = {
+			[395152] = true,
+			[395296] = true,
+		},
+		names = {
+			["Ebon Might"] = true,
+		},
+	},
+	blackAttunement = {
+		spellIDs = {
+			[403264] = true,
+			[403295] = true,
+		},
+		names = {
+			["Black Attunement"] = true,
+		},
+	},
+}
 
 local manaClasses = {
 	DRUID = true,
@@ -134,7 +151,6 @@ for _, spellID in ipairs(bloodlustLockoutDebuffs) do
 	bloodlustLockoutDebuffIDs[spellID] = true
 end
 
-local ebonMightSpellName = C_Spell and C_Spell.GetSpellName and (C_Spell.GetSpellName(395296) or C_Spell.GetSpellName(395152)) or "Ebon Might"
 local ebonMightSpellTexture = C_Spell and C_Spell.GetSpellTexture and (C_Spell.GetSpellTexture(395296) or C_Spell.GetSpellTexture(395152))
 
 local BLOODLUST_LOCKOUT_SCAN_FILTERS = {
@@ -199,12 +215,20 @@ local blackAttunementState = {
 	hasTalent = false,
 	talentDirty = true,
 	auraInstanceID = nil,
+	auraFallback = false,
 	draconicAttunementsSpellID = 403208,
-	auraIDs = {
-		[403264] = true,
-		[403295] = true,
-	},
 }
+
+if C_Spell and C_Spell.GetSpellName then
+	for _, auraDefinition in pairs(auraDefinitions) do
+		for spellID in pairs(auraDefinition.spellIDs) do
+			local ok, spellName = pcall(C_Spell.GetSpellName, spellID)
+			if ok and type(spellName) == "string" and spellName ~= "" then
+				auraDefinition.names[spellName] = true
+			end
+		end
+	end
+end
 
 local function WarnOnce(key, message)
 	if warningsShown[key] then
@@ -222,6 +246,98 @@ local function IsSecretValue(value)
 
 	local ok, isSecret = pcall(issecretvalue, value)
 	return ok and isSecret == true
+end
+
+local function IsTrackedAuraInfo(auraInfo, auraDefinition)
+	if not auraInfo or not auraDefinition then
+		return false
+	end
+
+	local ok, isMatch = pcall(function()
+		local spellID = auraInfo.spellID or auraInfo.spellId
+		if not IsSecretValue(spellID) and type(spellID) == "number" and auraDefinition.spellIDs[spellID] == true then
+			return true
+		end
+
+		local auraName = auraInfo.name
+		if not IsSecretValue(auraName) and type(auraName) == "string" and auraDefinition.names[auraName] == true then
+			return true
+		end
+
+		return false
+	end)
+
+	return ok and isMatch == true
+end
+
+local function GetTrackedAuraInstanceID(auraInfo, auraDefinition)
+	if not IsTrackedAuraInfo(auraInfo, auraDefinition) then
+		return
+	end
+
+	local auraInstanceID = auraInfo.auraInstanceID
+	if IsSecretValue(auraInstanceID) then
+		return
+	end
+
+	return auraInstanceID
+end
+
+local function FindTrackedUnitAura(unitID, auraDefinition, filter, allowAuraUtil)
+	if not unitID or not auraDefinition then
+		return false
+	end
+
+	filter = filter or "HELPFUL"
+	if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName then
+		for auraName in pairs(auraDefinition.names) do
+			local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataBySpellName, unitID, auraName, filter)
+			if ok and auraInfo then
+				return true, auraInfo
+			end
+		end
+	end
+
+	if unitID == "player" and C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
+		for spellID in pairs(auraDefinition.spellIDs) do
+			local ok, auraInfo = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellID)
+			if ok and auraInfo then
+				return true, auraInfo
+			end
+		end
+	end
+
+	if allowAuraUtil and unitID == "player" and AuraUtil and AuraUtil.FindAuraBySpellID then
+		for spellID in pairs(auraDefinition.spellIDs) do
+			local ok, name, _, _, _, _, _, _, _, spellIDResult, _, _, _, _, _, _, auraInstanceID = pcall(AuraUtil.FindAuraBySpellID, spellID, unitID, filter)
+			if ok and name then
+				if IsSecretValue(name) or IsSecretValue(spellIDResult) or IsSecretValue(auraInstanceID) then
+					return true, { auraInstanceID = nil }
+				end
+
+				return true, {
+					name = name,
+					spellID = spellIDResult or spellID,
+					auraInstanceID = auraInstanceID,
+				}
+			end
+		end
+	end
+
+	if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+		for index = 1, MAX_AURA_SCAN_COUNT do
+			local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataByIndex, unitID, index, filter)
+			if not ok or not auraInfo then
+				break
+			end
+
+			if IsTrackedAuraInfo(auraInfo, auraDefinition) then
+				return true, auraInfo
+			end
+		end
+	end
+
+	return false
 end
 
 local function EnsureBloodlustAlertFrame()
@@ -1319,24 +1435,7 @@ local function RefreshPotionStateSoon()
 end
 
 local function IsEbonMightAuraInfo(auraInfo)
-	if not auraInfo then
-		return false
-	end
-
-	local ok, isEbonMight = pcall(function()
-		local spellID = auraInfo.spellId or auraInfo.spellID
-		if IsSecretValue(spellID) then
-			return false
-		end
-		if type(spellID) == "number" and EBON_MIGHT_AURA_IDS[spellID] then
-			return true
-		end
-
-		local auraName = auraInfo.name
-		return ebonMightSpellName and auraName == ebonMightSpellName
-	end)
-
-	return ok and isEbonMight == true
+	return IsTrackedAuraInfo(auraInfo, auraDefinitions.ebonMight)
 end
 
 local function GetEbonMightAuraExpirationInfo(auraInfo)
@@ -1350,12 +1449,7 @@ local function GetEbonMightAuraExpirationInfo(auraInfo)
 			return
 		end
 
-		local auraInstanceID = auraInfo.auraInstanceID
-		if IsSecretValue(auraInstanceID) then
-			auraInstanceID = nil
-		end
-
-		return auraExpirationTime, auraInstanceID
+		return auraExpirationTime, GetTrackedAuraInstanceID(auraInfo, auraDefinitions.ebonMight)
 	end)
 
 	if ok then
@@ -1368,28 +1462,9 @@ local function GetEbonMightExpirationTime(unitID)
 		return
 	end
 
-	if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName and ebonMightSpellName then
-		local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataBySpellName, unitID, ebonMightSpellName, "HELPFUL|PLAYER")
-		if ok then
-			local expirationTime, auraInstanceID = GetEbonMightAuraExpirationInfo(auraInfo)
-			if expirationTime then
-				return expirationTime, auraInstanceID
-			end
-		end
-	end
-
-	if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-		for index = 1, MAX_AURA_SCAN_COUNT do
-			local ok, auraInfo = pcall(C_UnitAuras.GetAuraDataByIndex, unitID, index, "HELPFUL|PLAYER")
-			if not ok or not auraInfo then
-				break
-			end
-
-			local expirationTime, auraInstanceID = GetEbonMightAuraExpirationInfo(auraInfo)
-			if expirationTime then
-				return expirationTime, auraInstanceID
-			end
-		end
+	local found, auraInfo = FindTrackedUnitAura(unitID, auraDefinitions.ebonMight, "HELPFUL|PLAYER")
+	if found then
+		return GetEbonMightAuraExpirationInfo(auraInfo)
 	end
 end
 
@@ -1546,45 +1621,21 @@ end
 module.RefreshEbonMightTracker = RefreshEbonMightTracker
 
 local function IsBlackAttunementAuraInfo(auraInfo)
-	if not auraInfo then
-		return false
-	end
-
-	local ok, isBlackAttunement = pcall(function()
-		local spellID = auraInfo.spellID or auraInfo.spellId
-		if IsSecretValue(spellID) then
-			return true
-		end
-
-		return type(spellID) == "number" and blackAttunementState.auraIDs[spellID] == true
-	end)
-
-	return ok and isBlackAttunement == true
+	return IsTrackedAuraInfo(auraInfo, auraDefinitions.blackAttunement)
 end
 
 local function GetPlayerBlackAttunementAura()
-	for spellID in pairs(blackAttunementState.auraIDs) do
-		if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
-			local ok, auraInfo = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellID)
-			if ok and auraInfo then
-				return auraInfo
-			end
-		end
-
-		if AuraUtil and AuraUtil.FindAuraBySpellID then
-			local ok, name, _, _, _, _, _, _, _, spellIDResult, _, _, _, _, _, _, auraInstanceID = pcall(AuraUtil.FindAuraBySpellID, spellID, "player", "HELPFUL")
-			if ok and name then
-				return {
-					spellID = spellIDResult or spellID,
-					auraInstanceID = auraInstanceID,
-				}
-			end
-		end
+	local found, auraInfo = FindTrackedUnitAura("player", auraDefinitions.blackAttunement, "HELPFUL", true)
+	if found then
+		return true, GetTrackedAuraInstanceID(auraInfo, auraDefinitions.blackAttunement)
 	end
+
+	return false
 end
 
 local function RefreshBlackAttunementState()
 	blackAttunementState.auraInstanceID = nil
+	blackAttunementState.auraFallback = false
 
 	if Profiles.IsModDisabled and Profiles.IsModDisabled() then
 		SetBlackAttunementAlertShown(false)
@@ -1601,9 +1652,10 @@ local function RefreshBlackAttunementState()
 		return
 	end
 
-	local auraInfo = GetPlayerBlackAttunementAura()
-	if auraInfo then
-		blackAttunementState.auraInstanceID = auraInfo.auraInstanceID
+	local hasAura, auraInstanceID = GetPlayerBlackAttunementAura()
+	if hasAura then
+		blackAttunementState.auraInstanceID = auraInstanceID
+		blackAttunementState.auraFallback = auraInstanceID == nil
 		SetBlackAttunementAlertShown(false)
 		return
 	end
@@ -1651,6 +1703,10 @@ local function DidBlackAttunementChange(unitID, updateInfo)
 	end
 
 	if HasAuraInstanceID(updateInfo.updatedAuraInstanceIDs, blackAttunementState.auraInstanceID) then
+		return true
+	end
+
+	if blackAttunementState.auraFallback and (updateInfo.updatedAuraInstanceIDs or updateInfo.removedAuraInstanceIDs) then
 		return true
 	end
 
@@ -2105,13 +2161,16 @@ end
 
 local function GetBlackAttunementDebugState()
 	local hasTalent = RefreshDraconicAttunementsTalentState()
-	local auraInfo = hasTalent and GetPlayerBlackAttunementAura() or nil
+	local hasAura = false
+	if hasTalent then
+		hasAura = GetPlayerBlackAttunementAura()
+	end
 	return string_format(
 		"BLACK state: enabled=%s aug=%s talent=%s aura=%s shown=%s",
 		tostring(IsBlackAttunementAlertEnabled()),
 		tostring(IsAugmentationEvoker()),
 		tostring(hasTalent),
-		tostring(auraInfo ~= nil),
+		tostring(hasAura == true),
 		tostring(blackAttunementState.alertFrame and blackAttunementState.alertFrame:IsShown())
 	)
 end
