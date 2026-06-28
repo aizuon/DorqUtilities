@@ -248,23 +248,29 @@ local function IsSecretValue(value)
 	return ok and isSecret == true
 end
 
+local function IsTrackedSpellIdentifier(spellID, spellName, auraDefinition)
+	if not auraDefinition then
+		return false
+	end
+
+	if not IsSecretValue(spellID) and type(spellID) == "number" and auraDefinition.spellIDs[spellID] == true then
+		return true
+	end
+
+	if not IsSecretValue(spellName) and type(spellName) == "string" and auraDefinition.names[spellName] == true then
+		return true
+	end
+
+	return false
+end
+
 local function IsTrackedAuraInfo(auraInfo, auraDefinition)
 	if not auraInfo or not auraDefinition then
 		return false
 	end
 
 	local ok, isMatch = pcall(function()
-		local spellID = auraInfo.spellID or auraInfo.spellId
-		if not IsSecretValue(spellID) and type(spellID) == "number" and auraDefinition.spellIDs[spellID] == true then
-			return true
-		end
-
-		local auraName = auraInfo.name
-		if not IsSecretValue(auraName) and type(auraName) == "string" and auraDefinition.names[auraName] == true then
-			return true
-		end
-
-		return false
+		return IsTrackedSpellIdentifier(auraInfo.spellID or auraInfo.spellId, auraInfo.name, auraDefinition)
 	end)
 
 	return ok and isMatch == true
@@ -1619,8 +1625,50 @@ local function IsBlackAttunementAuraInfo(auraInfo)
 	return IsTrackedAuraInfo(auraInfo, auraDefinitions.blackAttunement)
 end
 
+local function IsBlackAttunementStanceActive()
+	if not GetNumShapeshiftForms or not GetShapeshiftFormInfo then
+		return false
+	end
+
+	local ok, numForms = pcall(GetNumShapeshiftForms)
+	if not ok or IsSecretValue(numForms) or type(numForms) ~= "number" then
+		return false
+	end
+
+	for index = 1, numForms do
+		local formOk, _, isActive, _, spellID = pcall(GetShapeshiftFormInfo, index)
+		if formOk and isActive == true then
+			local spellName
+			if C_Spell and C_Spell.GetSpellName and not IsSecretValue(spellID) and type(spellID) == "number" then
+				local nameOk, name = pcall(C_Spell.GetSpellName, spellID)
+				if nameOk and not IsSecretValue(name) then
+					spellName = name
+				end
+			end
+
+			if IsTrackedSpellIdentifier(spellID, spellName, auraDefinitions.blackAttunement) then
+				return true
+			end
+
+			local hasReadableIdentifier = not IsSecretValue(spellID) and type(spellID) == "number"
+			hasReadableIdentifier = hasReadableIdentifier or (not IsSecretValue(spellName) and type(spellName) == "string")
+
+			-- Evoker attunements are exposed as stances; Black Attunement is stance 1.
+			if not hasReadableIdentifier and index == 1 then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 local function GetPlayerBlackAttunementAura()
-	local found, auraInfo = FindTrackedUnitAura("player", auraDefinitions.blackAttunement, "HELPFUL", true)
+	if IsBlackAttunementStanceActive() then
+		return true
+	end
+
+	local found, auraInfo = FindTrackedUnitAura("player", auraDefinitions.blackAttunement, "HELPFUL|PLAYER", true)
 	if found then
 		return true, GetTrackedAuraInstanceID(auraInfo, auraDefinitions.blackAttunement)
 	end
@@ -2134,15 +2182,18 @@ end
 
 local function GetBlackAttunementDebugState()
 	local hasTalent = RefreshDraconicAttunementsTalentState()
+	local hasStance = false
 	local hasAura = false
 	if hasTalent then
+		hasStance = IsBlackAttunementStanceActive()
 		hasAura = GetPlayerBlackAttunementAura()
 	end
 	return string_format(
-		"BLACK state: enabled=%s aug=%s talent=%s aura=%s shown=%s",
+		"BLACK state: enabled=%s aug=%s talent=%s stance=%s aura=%s shown=%s",
 		tostring(IsBlackAttunementAlertEnabled()),
 		tostring(IsAugmentationEvoker()),
 		tostring(hasTalent),
+		tostring(hasStance == true),
 		tostring(hasAura == true),
 		tostring(blackAttunementState.alertFrame and blackAttunementState.alertFrame:IsShown())
 	)
