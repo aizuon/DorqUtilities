@@ -962,13 +962,21 @@ local function RefreshDraconicAttunementsTalentState()
 	return blackAttunementState.hasTalent
 end
 
-local function IsPotionAlertEnabled()
-	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.POTION_READY
+local function IsAlertEnabled(alertKey)
+	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts[alertKey]
 	return alertSettings and not alertSettings.disabled
 end
 
+local function IsSettingEnabled(settingKey)
+	return type(Profiles.currentProfile.settings) == "table" and Profiles.currentProfile.settings[settingKey] ~= false
+end
+
+local function IsPotionAlertEnabled()
+	return IsAlertEnabled("POTION_READY")
+end
+
 local function IsEbonMightTrackerEnabled()
-	return type(Profiles.currentProfile.settings) == "table" and Profiles.currentProfile.settings.ebonMightTracker ~= false
+	return IsSettingEnabled("ebonMightTracker")
 end
 
 local function RefreshEbonMightCombatState()
@@ -1050,22 +1058,19 @@ local function IsChallengeModeActive()
 end
 
 local function IsBloodlustAlertEnabled()
-	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.BLOODLUST_READY
-	return alertSettings and not alertSettings.disabled
+	return IsAlertEnabled("BLOODLUST_READY")
 end
 
 local function IsSoundChannelCapEnabled()
-	return type(Profiles.currentProfile.settings) == "table" and Profiles.currentProfile.settings.soundChannelCap ~= false
+	return IsSettingEnabled("soundChannelCap")
 end
 
 local function IsLoadoutMismatchAlertEnabled()
-	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.LOADOUT_MISMATCH
-	return alertSettings and not alertSettings.disabled
+	return IsAlertEnabled("LOADOUT_MISMATCH")
 end
 
 local function IsBlackAttunementAlertEnabled()
-	local alertSettings = Profiles.currentProfile.alerts and Profiles.currentProfile.alerts.BLACK_ATTUNEMENT_MISSING
-	return alertSettings and not alertSettings.disabled
+	return IsAlertEnabled("BLACK_ATTUNEMENT_MISSING")
 end
 
 local function ReadSoundNumChannels()
@@ -2018,6 +2023,12 @@ local function RefreshReadyAlertStatesSoon()
 	RefreshEbonMightTracker()
 end
 
+local function RefreshTalentDependentStatesSoon()
+	MarkDraconicAttunementsTalentDirty()
+	RefreshLoadoutMismatchStateSoon()
+	RefreshBlackAttunementStateSoon()
+end
+
 local function RefreshPlayerState()
 	playerClass = select(2, UnitClass("player"))
 	MarkDraconicAttunementsTalentDirty()
@@ -2156,10 +2167,8 @@ function eventFrame:PLAYER_SPECIALIZATION_CHANGED(unitID)
 		return
 	end
 
-	MarkDraconicAttunementsTalentDirty()
 	RefreshPlayerState()
-	RefreshLoadoutMismatchStateSoon()
-	RefreshBlackAttunementStateSoon()
+	RefreshTalentDependentStatesSoon()
 end
 
 function eventFrame:PLAYER_EQUIPMENT_CHANGED()
@@ -2171,21 +2180,15 @@ function eventFrame:EQUIPMENT_SETS_CHANGED()
 end
 
 function eventFrame:TRAIT_CONFIG_UPDATED()
-	MarkDraconicAttunementsTalentDirty()
-	RefreshLoadoutMismatchStateSoon()
-	RefreshBlackAttunementStateSoon()
+	RefreshTalentDependentStatesSoon()
 end
 
 function eventFrame:TRAIT_CONFIG_LIST_UPDATED()
-	MarkDraconicAttunementsTalentDirty()
-	RefreshLoadoutMismatchStateSoon()
-	RefreshBlackAttunementStateSoon()
+	RefreshTalentDependentStatesSoon()
 end
 
 function eventFrame:ACTIVE_COMBAT_CONFIG_CHANGED()
-	MarkDraconicAttunementsTalentDirty()
-	RefreshLoadoutMismatchStateSoon()
-	RefreshBlackAttunementStateSoon()
+	RefreshTalentDependentStatesSoon()
 end
 
 function eventFrame:CVAR_UPDATE(cvarName)
@@ -2204,13 +2207,11 @@ function eventFrame:SPELLS_CHANGED()
 end
 
 function eventFrame:UPDATE_INSTANCE_INFO()
-	module.RefreshReadyAlertStates()
-	RefreshLoadoutMismatchStateSoon()
+	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:PLAYER_DIFFICULTY_CHANGED()
-	module.RefreshReadyAlertStates()
-	RefreshLoadoutMismatchStateSoon()
+	RefreshReadyAlertStatesSoon()
 end
 
 function eventFrame:CHALLENGE_MODE_START()

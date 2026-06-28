@@ -15,11 +15,12 @@ local function RefreshCheckButtons()
 end
 
 local function RefreshRuntimeState()
-	if DorqUtilities.Core and DorqUtilities.Core.RefreshReadyAlertStates then
-		DorqUtilities.Core.RefreshReadyAlertStates()
+	local core = DorqUtilities.Core
+	if core and core.RefreshReadyAlertStates then
+		core.RefreshReadyAlertStates()
 	end
-	if DorqUtilities.Core and DorqUtilities.Core.RefreshSoundChannelCap then
-		DorqUtilities.Core.RefreshSoundChannelCap()
+	if core and core.RefreshSoundChannelCap then
+		core.RefreshSoundChannelCap()
 	end
 end
 
